@@ -1,0 +1,173 @@
+// Measurement only. Reports what the host's navigation bar does with the
+// item this tweak adds, so the placement and the tint stop being guessed.
+//
+// Five questions, each answered by one line of the report:
+//
+//   1. Which navigation item does MSGThreadViewNavBarManager write to, and
+//      how many items does it hold? One item means the host's own call
+//      buttons never enter that array, which would explain an eye placed
+//      past them instead of before them.
+//   2. Which view class renders the added item, compared with the class
+//      rendering the call buttons.
+//   3. What colorSet and icon the call buttons carry, and what ours has.
+//   4. The frame of every rendered bar item, so horizontal order and
+//      vertical alignment are read rather than described.
+//   5. Whether the image survives as a template through the wrapper.
+
+#import "PRMPrefs.h"
+#import "PRMDebug.h"
+#import <objc/runtime.h>
+#import <objc/message.h>
+
+static id PSGSend(id target, SEL selector) {
+    if (target == nil || ![target respondsToSelector:selector]) return nil;
+    return ((id (*)(id, SEL))objc_msgSend)(target, selector);
+}
+
+#pragma mark - Question 1
+
+static void PSGReportNavigationItem(id manager) {
+    id delegate = PSGSend(manager, @selector(delegate));
+    id navigationItem = PSGSend(delegate, @selector(navBarNavigationItem));
+
+    UINavigationItem *own = [delegate isKindOfClass:[UIViewController class]]
+                          ? ((UIViewController *)delegate).navigationItem : nil;
+
+    NSArray *right = [navigationItem isKindOfClass:[UINavigationItem class]]
+                   ? ((UINavigationItem *)navigationItem).rightBarButtonItems : nil;
+    NSArray *left = [navigationItem isKindOfClass:[UINavigationItem class]]
+                  ? ((UINavigationItem *)navigationItem).leftBarButtonItems : nil;
+
+    NSMutableArray<NSString *> *rightNames = [NSMutableArray array];
+    for (UIBarButtonItem *item in right) {
+        [rightNames addObject:[NSString stringWithFormat:@"%@%@",
+                               NSStringFromClass([item class]),
+                               item.image ? @"(img)" : @""]];
+    }
+
+    [PRMDebug setStatus:[NSString stringWithFormat:
+                         @"delegate %@ | navBarItem %@ | same as own: %@ | right %lu [%@] | left %lu",
+                         NSStringFromClass([delegate class]),
+                         navigationItem ? NSStringFromClass([navigationItem class]) : @"NIL",
+                         navigationItem == own ? @"yes" : @"NO",
+                         (unsigned long)right.count,
+                         [rightNames componentsJoinedByString:@", "],
+                         (unsigned long)left.count]
+                 forKey:@"probe 1 nav item"];
+}
+
+#pragma mark - Questions 2 to 5
+
+static void PSGCollectItemViews(UIView *root, NSInteger depth,
+                                NSMutableArray<UIView *> *found) {
+    if (root == nil || depth > 16) return;
+    if ([NSStringFromClass([root class])
+         rangeOfString:@"BarButtonItemView"].location != NSNotFound) {
+        [found addObject:root];
+        return;
+    }
+    for (UIView *child in root.subviews) {
+        PSGCollectItemViews(child, depth + 1, found);
+    }
+}
+
+static BOOL PSGOnScreen(UIView *view) {
+    if (view.window == nil) return NO;
+    for (UIView *node = view; node != nil; node = node.superview) {
+        if (node.hidden || node.alpha <= 0.01) return NO;
+    }
+    return YES;
+}
+
+static void PSGReportRenderedItems(UIWindow *window) {
+    NSMutableArray<UIView *> *views = [NSMutableArray array];
+    PSGCollectItemViews(window, 0, views);
+
+    NSMutableArray<NSString *> *lines = [NSMutableArray array];
+    for (UIView *view in views) {
+        if (!PSGOnScreen(view)) continue;
+        CGRect frame = [view convertRect:view.bounds toView:window];
+
+        id item = PSGSend(view, @selector(barButtonItem));
+        UIImage *image = [item isKindOfClass:[UIBarButtonItem class]]
+                       ? ((UIBarButtonItem *)item).image : nil;
+        NSString *rendering = image
+            ? (image.renderingMode == UIImageRenderingModeAlwaysTemplate
+               ? @"template" : @"original")
+            : @"noimage";
+
+        id colourSet = PSGSend(view, @selector(colorSet));
+        NSString *icon = @"-";
+        if ([view respondsToSelector:@selector(icon)]) {
+            unsigned long long value =
+                ((unsigned long long (*)(id, SEL))objc_msgSend)(view, @selector(icon));
+            icon = [NSString stringWithFormat:@"%llu", value];
+        }
+
+        [lines addObject:[NSString stringWithFormat:
+                          @"%@ x%.0f y%.0f %.0fx%.0f icon:%@ set:%@ img:%@",
+                          NSStringFromClass([view class]),
+                          CGRectGetMinX(frame), CGRectGetMinY(frame),
+                          frame.size.width, frame.size.height,
+                          icon,
+                          colourSet ? NSStringFromClass([colourSet class]) : @"nil",
+                          rendering]];
+    }
+
+    [PRMDebug setStatus:lines.count ? [lines componentsJoinedByString:@" || "]
+                                    : @"no rendered bar item views"
+                 forKey:@"probe 2 rendered"];
+}
+
+#pragma mark - Question 3
+
+// The colour a neighbour actually shows, read off its own image view.
+static void PSGReportColours(UIWindow *window) {
+    NSMutableArray<UIView *> *views = [NSMutableArray array];
+    PSGCollectItemViews(window, 0, views);
+
+    NSMutableArray<NSString *> *lines = [NSMutableArray array];
+    for (UIView *view in views) {
+        if (!PSGOnScreen(view)) continue;
+        UIColor *tint = view.tintColor;
+        UIColor *imageTint = nil;
+        for (UIView *child in view.subviews) {
+            if ([child isKindOfClass:[UIImageView class]]) {
+                imageTint = child.tintColor;
+                break;
+            }
+        }
+        CGFloat r1 = 0, g1 = 0, b1 = 0, a1 = 0, r2 = 0, g2 = 0, b2 = 0, a2 = 0;
+        [tint getRed:&r1 green:&g1 blue:&b1 alpha:&a1];
+        [imageTint getRed:&r2 green:&g2 blue:&b2 alpha:&a2];
+        [lines addObject:[NSString stringWithFormat:@"%@ view %.2f/%.2f/%.2f img %.2f/%.2f/%.2f",
+                          NSStringFromClass([view class]), r1, g1, b1, r2, g2, b2]];
+    }
+    [PRMDebug setStatus:lines.count ? [lines componentsJoinedByString:@" || "] : @"none"
+                 forKey:@"probe 3 colours"];
+}
+
+#pragma mark - Hook
+
+%hook MSGThreadViewNavBarManager
+
+- (void)updateRightBarButtonItems {
+    %orig;
+    if (![PRMPrefs isEnabled:PRMKeyDebugEnabled]) return;
+
+    PSGReportNavigationItem(self);
+
+    // Read after the bar has laid out, so frames and wrappers are final.
+    id delegate = PSGSend(self, @selector(delegate));
+    UIViewController *controller = [delegate isKindOfClass:[UIViewController class]]
+                                 ? (UIViewController *)delegate : nil;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        UIWindow *window = controller.viewIfLoaded.window;
+        if (window == nil) return;
+        PSGReportRenderedItems(window);
+        PSGReportColours(window);
+    });
+}
+
+%end

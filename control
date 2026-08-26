@@ -1,0 +1,9 @@
+Package: com.primesenger.tweak
+Name: PrimeSenger
+Version: 1.0.1
+Architecture: iphoneos-arm64
+Description: Messenger enhancer
+Maintainer: PrimeSenger
+Author: PrimeSenger
+Section: Tweaks
+Depends: mobilesubstrate

@@ -1,0 +1,139 @@
+name: Build PrimeSenger
+
+on:
+  workflow_dispatch:
+    inputs:
+      ipa_url:
+        description: "URL to a decrypted Messenger IPA"
+        required: true
+        type: string
+      liquid_glass:
+        description: "Opt the app into Liquid Glass (system controls only)"
+        default: false
+        required: false
+        type: boolean
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Hide sensitive inputs
+        uses: levibostian/action-hide-sensitive-inputs@v1
+
+      # The installer ends by fetching SDKs from api.github.com unauthenticated;
+      # after the Homebrew step that trips the rate limit and the script exits
+      # non-zero. The Theos clone itself has already succeeded by then, and the
+      # next step installs the SDK over an authenticated download, so this
+      # tolerates that specific failure and verifies the clone instead.
+      - name: Install Theos
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/theos/theos/master/bin/install-theos -o /tmp/install-theos
+          bash /tmp/install-theos || echo "installer exited non-zero (SDK fetch); verifying clone"
+          if [ ! -f "$HOME/theos/makefiles/common.mk" ]; then
+            echo "::error::Theos clone incomplete"; exit 1
+          fi
+          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
+          echo "Theos clone OK"
+
+      - name: Ensure iOS 16.5 SDK
+        run: |
+          if [ -d "$THEOS/sdks/iPhoneOS16.5.sdk" ]; then
+            echo "SDK already present"
+          else
+            curl -fsSL -H "Authorization: token ${{ github.token }}" \
+              -o /tmp/sdks.tar.gz \
+              https://codeload.github.com/theos/sdks/tar.gz/refs/heads/master
+            mkdir -p /tmp/sdks
+            tar -xzf /tmp/sdks.tar.gz -C /tmp/sdks --strip-components=1
+            mkdir -p "$THEOS/sdks"
+            mv /tmp/sdks/iPhoneOS16.5.sdk "$THEOS/sdks/"
+          fi
+          ls -1 "$THEOS/sdks"
+
+      # Read from control so the artefact names cannot drift from the tweak.
+      - name: Read version
+        run: |
+          VERSION=$(grep '^Version:' control | awk '{print $2}')
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "building PrimeSenger $VERSION"
+
+      - name: Build dylib
+        run: |
+          make clean || true
+          make FINALPACKAGE=1
+          mkdir -p out
+          DYLIB=$(find .theos -name 'PrimeSenger.dylib' | head -1)
+          if [ -z "$DYLIB" ]; then echo "::error::dylib not produced"; exit 1; fi
+          cp "$DYLIB" out/PrimeSenger.dylib
+          lipo -info out/PrimeSenger.dylib
+          otool -L out/PrimeSenger.dylib || true
+
+      - name: Upload dylib
+        uses: actions/upload-artifact@v4
+        with:
+          name: PrimeSenger-${{ env.VERSION }}-dylib
+          path: out/PrimeSenger.dylib
+
+      - name: Install cyan
+        run: |
+          python3 -m venv /tmp/cyanenv
+          /tmp/cyanenv/bin/python -m pip install --upgrade pip
+          /tmp/cyanenv/bin/python -m pip install \
+            https://github.com/asdfzxcvbn/pyzule-rw/archive/main.zip
+
+      - name: Download IPA
+        run: curl -fsSL "${{ inputs.ipa_url }}" -o messenger.ipa
+
+      # The input IPA already carries Meta's entitlements in its own
+      # signature, so nothing is passed here and nothing is re-signed
+      # afterwards. Only the dylib is added.
+      # This is the exact argument set of the build that booted, with the
+      # tweak added. The tweak now carries no hooks, so nothing pulls in
+      # Substrate and no extra image loads after startup.
+      - name: Inject
+        run: |
+          /tmp/cyanenv/bin/cyan -i messenger.ipa -o out/PrimeSenger.ipa \
+                                -f Resources/SideloadKeychainFix.dylib out/PrimeSenger.dylib \
+                                -x Resources/Messenger.entitlements \
+                                -u -w -e
+
+      # Done here rather than through cyan's plist flag, whose merge or
+      # replace behaviour is not documented clearly enough to risk the whole
+      # Info.plist on. The script edits one key and leaves the rest alone.
+      - name: Opt into Liquid Glass
+        if: ${{ inputs.liquid_glass }}
+        run: |
+          rm -rf glass && mkdir glass
+          (cd glass && unzip -qq ../out/PrimeSenger.ipa)
+          APP=$(find glass/Payload -maxdepth 1 -name '*.app' | head -1)
+          if [ -z "$APP" ]; then echo "::error::no app bundle found"; exit 1; fi
+          python3 Resources/set-liquid-glass.py "$APP/Info.plist"
+          rm -f out/PrimeSenger.ipa
+          (cd glass && zip -qry ../out/PrimeSenger.ipa Payload)
+          echo "repacked $(ls -la out/PrimeSenger.ipa | awk '{print $5}') bytes"
+
+      - name: Name the IPA
+        run: |
+          SUFFIX=""
+          if [ "${{ inputs.liquid_glass }}" = "true" ]; then SUFFIX="-glass"; fi
+          FINAL="PrimeSenger-${VERSION}${SUFFIX}.ipa"
+          mv out/PrimeSenger.ipa "out/$FINAL"
+          echo "FINAL=$FINAL" >> "$GITHUB_ENV"
+          echo "packaged $FINAL"
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: PrimeSenger-${{ env.VERSION }}-ipa
+          path: out/${{ env.FINAL }}
