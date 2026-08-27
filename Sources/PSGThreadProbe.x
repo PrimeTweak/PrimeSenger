@@ -1,74 +1,39 @@
-// Measurement only. Reports what the host's navigation bar does with the
-// item this tweak adds, so the placement and the tint stop being guessed.
+// Complete measurement of the thread navigation bar, in one pass.
 //
-// Five questions, each answered by one line of the report:
+// Everything needed to place an item among the host's own call buttons is
+// dumped from a single hook: the plugin registry that feeds the bar, every
+// view it renders, the real element type each factory expects, and the
+// colour source. Nothing here changes behaviour.
 //
-//   1. Which navigation item does MSGThreadViewNavBarManager write to, and
-//      how many items does it hold? One item means the host's own call
-//      buttons never enter that array, which would explain an eye placed
-//      past them instead of before them.
-//   2. Which view class renders the added item, compared with the class
-//      rendering the call buttons.
-//   3. What colorSet and icon the call buttons carry, and what ours has.
-//   4. The frame of every rendered bar item, so horizontal order and
-//      vertical alignment are read rather than described.
-//   5. Whether the image survives as a template through the wrapper.
+// Hooked on updateRightBarButtonItems, measured to fire. Nothing else in
+// this tweak hooks it.
+//
+// Signatures taken from the binary:
+//   -[MSGThreadViewNavBarManager updateRightBarButtonItems]        v16@0:8
+//   -[MSGThreadViewNavBarManager delegate]                         @16@0:8
+//   -[MSGThreadViewNavBarManager barButtonItemsRenderer]           @16@0:8
+//   -[MSGThreadViewController navBarRendererKeysByViewModelProviderKey] @16@0:8
+//   -[MSGThreadViewController navBarViewController]                @16@0:8
+//   -[MSGThreadViewController navBarNavigationItem]                @16@0:8
+//   -[MSGThreadViewController customOtherSendBarButtons:]          @24@0:8@16
+//   -[MSGThreadViewController customLeftBarButton:]                @24@0:8@16
 
 #import "PRMPrefs.h"
 #import "PRMDebug.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
 
+static NSString *const kPSGProbeBuild = @"probe-full";
+
+#pragma mark - Helpers
+
 static id PSGSend(id target, SEL selector) {
     if (target == nil || ![target respondsToSelector:selector]) return nil;
     return ((id (*)(id, SEL))objc_msgSend)(target, selector);
 }
 
-#pragma mark - Question 1
-
-static void PSGReportNavigationItem(id manager) {
-    id delegate = PSGSend(manager, @selector(delegate));
-    id navigationItem = PSGSend(delegate, @selector(navBarNavigationItem));
-
-    UINavigationItem *own = [delegate isKindOfClass:[UIViewController class]]
-                          ? ((UIViewController *)delegate).navigationItem : nil;
-
-    NSArray *right = [navigationItem isKindOfClass:[UINavigationItem class]]
-                   ? ((UINavigationItem *)navigationItem).rightBarButtonItems : nil;
-    NSArray *left = [navigationItem isKindOfClass:[UINavigationItem class]]
-                  ? ((UINavigationItem *)navigationItem).leftBarButtonItems : nil;
-
-    NSMutableArray<NSString *> *rightNames = [NSMutableArray array];
-    for (UIBarButtonItem *item in right) {
-        [rightNames addObject:[NSString stringWithFormat:@"%@%@",
-                               NSStringFromClass([item class]),
-                               item.image ? @"(img)" : @""]];
-    }
-
-    [PRMDebug setStatus:[NSString stringWithFormat:
-                         @"delegate %@ | navBarItem %@ | same as own: %@ | right %lu [%@] | left %lu",
-                         NSStringFromClass([delegate class]),
-                         navigationItem ? NSStringFromClass([navigationItem class]) : @"NIL",
-                         navigationItem == own ? @"yes" : @"NO",
-                         (unsigned long)right.count,
-                         [rightNames componentsJoinedByString:@", "],
-                         (unsigned long)left.count]
-                 forKey:@"probe 1 nav item"];
-}
-
-#pragma mark - Questions 2 to 5
-
-static void PSGCollectItemViews(UIView *root, NSInteger depth,
-                                NSMutableArray<UIView *> *found) {
-    if (root == nil || depth > 16) return;
-    if ([NSStringFromClass([root class])
-         rangeOfString:@"BarButtonItemView"].location != NSNotFound) {
-        [found addObject:root];
-        return;
-    }
-    for (UIView *child in root.subviews) {
-        PSGCollectItemViews(child, depth + 1, found);
-    }
+static NSString *PSGClass(id object) {
+    return object ? NSStringFromClass([object class]) : @"nil";
 }
 
 static BOOL PSGOnScreen(UIView *view) {
@@ -79,184 +44,185 @@ static BOOL PSGOnScreen(UIView *view) {
     return YES;
 }
 
-static void PSGReportRenderedItems(UIWindow *window) {
-    NSMutableArray<UIView *> *views = [NSMutableArray array];
-    PSGCollectItemViews(window, 0, views);
-
-    NSMutableArray<NSString *> *lines = [NSMutableArray array];
-    for (UIView *view in views) {
-        if (!PSGOnScreen(view)) continue;
-        CGRect frame = [view convertRect:view.bounds toView:window];
-
-        id item = PSGSend(view, @selector(barButtonItem));
-        UIImage *image = [item isKindOfClass:[UIBarButtonItem class]]
-                       ? ((UIBarButtonItem *)item).image : nil;
-        NSString *rendering = image
-            ? (image.renderingMode == UIImageRenderingModeAlwaysTemplate
-               ? @"template" : @"original")
-            : @"noimage";
-
-        id colourSet = PSGSend(view, @selector(colorSet));
-        NSString *icon = @"-";
-        if ([view respondsToSelector:@selector(icon)]) {
-            unsigned long long value =
-                ((unsigned long long (*)(id, SEL))objc_msgSend)(view, @selector(icon));
-            icon = [NSString stringWithFormat:@"%llu", value];
-        }
-
-        [lines addObject:[NSString stringWithFormat:
-                          @"%@ x%.0f y%.0f %.0fx%.0f icon:%@ set:%@ img:%@",
-                          NSStringFromClass([view class]),
-                          CGRectGetMinX(frame), CGRectGetMinY(frame),
-                          frame.size.width, frame.size.height,
-                          icon,
-                          colourSet ? NSStringFromClass([colourSet class]) : @"nil",
-                          rendering]];
-    }
-
-    [PRMDebug setStatus:lines.count ? [lines componentsJoinedByString:@" || "]
-                                    : @"no rendered bar item views"
-                 forKey:@"probe 2 rendered"];
+static NSString *PSGColour(UIColor *colour) {
+    if (colour == nil) return @"nil";
+    CGFloat r = 0, g = 0, b = 0, a = 0;
+    [colour getRed:&r green:&g blue:&b alpha:&a];
+    return [NSString stringWithFormat:@"%.2f/%.2f/%.2f", r, g, b];
 }
 
-#pragma mark - Question 3
+// Every property and selector an object answers, so a Swift class that the
+// static parser cannot read is still described.
+static NSString *PSGDescribeObject(id object, NSUInteger limit) {
+    if (object == nil) return @"nil";
+    unsigned int count = 0;
+    Method *methods = class_copyMethodList([object class], &count);
+    NSMutableArray<NSString *> *names = [NSMutableArray array];
+    for (unsigned int i = 0; i < count && names.count < limit; i++) {
+        [names addObject:NSStringFromSelector(method_getName(methods[i]))];
+    }
+    free(methods);
+    return [NSString stringWithFormat:@"%@[%u]{%@}", PSGClass(object), count,
+            [names componentsJoinedByString:@","]];
+}
 
-// The colour a neighbour actually shows, read off its own image view.
-static void PSGReportColours(UIWindow *window) {
-    NSMutableArray<UIView *> *views = [NSMutableArray array];
-    PSGCollectItemViews(window, 0, views);
+#pragma mark - 1. Plugin registry
 
+static void PSGDumpRegistry(id controller) {
+    id registry = PSGSend(controller, @selector(navBarRendererKeysByViewModelProviderKey));
+    if (![registry isKindOfClass:[NSDictionary class]]) {
+        [PRMDebug setStatus:[NSString stringWithFormat:@"not a dictionary: %@",
+                             PSGClass(registry)]
+                     forKey:@"A registry"];
+        return;
+    }
+
+    NSMutableArray<NSString *> *pairs = [NSMutableArray array];
+    for (id key in (NSDictionary *)registry) {
+        [pairs addObject:[NSString stringWithFormat:@"%@=>%@",
+                          key, ((NSDictionary *)registry)[key]]];
+    }
+    [PRMDebug setStatus:[NSString stringWithFormat:@"%lu pairs | %@",
+                         (unsigned long)[(NSDictionary *)registry count],
+                         [pairs componentsJoinedByString:@" "]]
+                 forKey:@"A registry"];
+}
+
+#pragma mark - 2. The renderer and the owners
+
+static void PSGDumpOwners(id manager, id controller) {
+    id renderer = PSGSend(manager, @selector(barButtonItemsRenderer));
+    id barController = PSGSend(controller, @selector(navBarViewController));
+    id navigationItem = PSGSend(controller, @selector(navBarNavigationItem));
+
+    [PRMDebug setStatus:[NSString stringWithFormat:@"renderer %@ | barVC %@ | navItem %@",
+                         PSGDescribeObject(renderer, 14),
+                         PSGClass(barController), PSGClass(navigationItem)]
+                 forKey:@"B renderer"];
+}
+
+#pragma mark - 3. What the factories expect
+
+static void PSGDumpFactories(id controller) {
     NSMutableArray<NSString *> *lines = [NSMutableArray array];
-    for (UIView *view in views) {
-        if (!PSGOnScreen(view)) continue;
-        UIColor *tint = view.tintColor;
+
+    for (NSString *name in @[@"customOtherSendBarButtons:", @"customLeftBarButton:"]) {
+        SEL selector = NSSelectorFromString(name);
+        if (![controller respondsToSelector:selector]) {
+            [lines addObject:[NSString stringWithFormat:@"%@ absent", name]];
+            continue;
+        }
+        id result = ((id (*)(id, SEL, id))objc_msgSend)(controller, selector, nil);
+        NSString *element = @"-";
+        if ([result isKindOfClass:[NSArray class]] && [(NSArray *)result count] > 0) {
+            element = PSGDescribeObject([(NSArray *)result firstObject], 10);
+        }
+        [lines addObject:[NSString stringWithFormat:@"%@ -> %@ count %@ first %@",
+                          name, PSGClass(result),
+                          [result respondsToSelector:@selector(count)]
+                              ? [NSString stringWithFormat:@"%lu", (unsigned long)[result count]]
+                              : @"-",
+                          element]];
+    }
+    [PRMDebug setStatus:[lines componentsJoinedByString:@" || "] forKey:@"C factories"];
+}
+
+#pragma mark - 4. Every view the bar draws
+
+static void PSGWalkBar(UIView *root, UIView *window, NSInteger depth,
+                       NSMutableArray<NSString *> *lines) {
+    if (root == nil || depth > 16 || lines.count > 34) return;
+
+    CGRect frame = [root convertRect:root.bounds toView:window];
+    BOOL inBar = CGRectGetMinY(frame) >= 20.0 && CGRectGetMaxY(frame) <= 140.0;
+
+    if (inBar && PSGOnScreen(root) && frame.size.width > 12.0) {
         UIColor *imageTint = nil;
-        for (UIView *child in view.subviews) {
+        for (UIView *child in root.subviews) {
             if ([child isKindOfClass:[UIImageView class]]) {
                 imageTint = child.tintColor;
                 break;
             }
         }
-        CGFloat r1 = 0, g1 = 0, b1 = 0, a1 = 0, r2 = 0, g2 = 0, b2 = 0, a2 = 0;
-        [tint getRed:&r1 green:&g1 blue:&b1 alpha:&a1];
-        [imageTint getRed:&r2 green:&g2 blue:&b2 alpha:&a2];
-        [lines addObject:[NSString stringWithFormat:@"%@ view %.2f/%.2f/%.2f img %.2f/%.2f/%.2f",
-                          NSStringFromClass([view class]), r1, g1, b1, r2, g2, b2]];
-    }
-    [PRMDebug setStatus:lines.count ? [lines componentsJoinedByString:@" || "] : @"none"
-                 forKey:@"probe 3 colours"];
-}
-
-#pragma mark - Question 6
-
-// Names the class that draws the call buttons. They are not
-// *BarButtonItemView, so the bar region is dumped whole.
-static void PSGDumpBarRegion(UIView *root, UIView *window, NSInteger depth,
-                             NSMutableArray<NSString *> *lines) {
-    if (root == nil || depth > 14 || lines.count > 40) return;
-
-    CGRect frame = [root convertRect:root.bounds toView:window];
-    BOOL inBar = CGRectGetMinY(frame) >= 30.0 && CGRectGetMaxY(frame) <= 130.0;
-    BOOL buttonSized = frame.size.width > 20.0 && frame.size.width < 90.0
-                    && frame.size.height > 20.0 && frame.size.height < 70.0;
-
-    if (inBar && buttonSized && PSGOnScreen(root)) {
-        [lines addObject:[NSString stringWithFormat:@"%@ x%.0f y%.0f %.0fx%.0f d%ld%@",
-                          NSStringFromClass([root class]),
+        [lines addObject:[NSString stringWithFormat:@"d%ld %@ x%.0f y%.0f %.0fx%.0f t%@ i%@%@",
+                          (long)depth, PSGClass(root),
                           CGRectGetMinX(frame), CGRectGetMinY(frame),
-                          frame.size.width, frame.size.height, (long)depth,
+                          frame.size.width, frame.size.height,
+                          PSGColour(root.tintColor), PSGColour(imageTint),
                           root.accessibilityLabel.length
-                              ? [@" " stringByAppendingString:root.accessibilityLabel]
-                              : @""]];
+                              ? [@" " stringByAppendingString:root.accessibilityLabel] : @""]];
     }
     for (UIView *child in root.subviews) {
-        PSGDumpBarRegion(child, window, depth + 1, lines);
+        PSGWalkBar(child, window, depth + 1, lines);
     }
 }
 
-static void PSGReportBarRegion(UIWindow *window) {
+static void PSGDumpBarViews(UIWindow *window) {
     NSMutableArray<NSString *> *lines = [NSMutableArray array];
-    PSGDumpBarRegion(window, window, 0, lines);
-    [PRMDebug setStatus:lines.count ? [lines componentsJoinedByString:@" || "]
-                                    : @"nothing button-sized in the bar region"
-                 forKey:@"probe 4 bar region"];
+    PSGWalkBar(window, window, 0, lines);
+    [PRMDebug setStatus:lines.count ? [lines componentsJoinedByString:@" || "] : @"nothing"
+                 forKey:@"D bar views"];
 }
 
-#pragma mark - Question 7
+#pragma mark - 5. The call buttons in detail
 
-// The host exposes a hook-shaped factory for extra bar buttons. What it
-// receives and returns decides whether the eye can join their array.
+static void PSGDumpCallButtons(UIView *root, UIView *window, NSInteger depth,
+                               NSMutableArray<NSString *> *lines) {
+    if (root == nil || depth > 16 || lines.count > 10) return;
 
-#pragma mark - Question 8
+    NSString *name = PSGClass(root);
+    BOOL candidate = [name rangeOfString:@"CallButton"].location != NSNotFound
+                  || [name rangeOfString:@"BarButtonItemView"].location != NSNotFound
+                  || [name rangeOfString:@"IconButton"].location != NSNotFound;
 
-// The thread bar is plugin driven: navBarRendererKeysByViewModelProviderKey
-// maps each view model provider to the renderer that draws its buttons. The
-// call buttons come from one of those pairs, and the classes involved are
-// Swift, so the mapping can only be read at runtime.
-static void PSGReportBarRegistry(id controller) {
-    id registry = PSGSend(controller, @selector(navBarRendererKeysByViewModelProviderKey));
-    if (![registry isKindOfClass:[NSDictionary class]]) {
-        [PRMDebug setStatus:[NSString stringWithFormat:@"registry is %@",
-                             registry ? NSStringFromClass([registry class]) : @"nil"]
-                     forKey:@"probe 8 registry"];
-        return;
+    if (candidate && PSGOnScreen(root)) {
+        CGRect frame = [root convertRect:root.bounds toView:window];
+        id item = PSGSend(root, @selector(barButtonItem));
+        id colourSet = PSGSend(root, @selector(colorSet));
+        [lines addObject:[NSString stringWithFormat:@"%@ x%.0f %.0fx%.0f item %@ set %@ super %@",
+                          name, CGRectGetMinX(frame),
+                          frame.size.width, frame.size.height,
+                          PSGClass(item), PSGDescribeObject(colourSet, 8),
+                          PSGClass(root.superview)]];
     }
+    for (UIView *child in root.subviews) {
+        PSGDumpCallButtons(child, window, depth + 1, lines);
+    }
+}
 
+static void PSGDumpButtons(UIWindow *window) {
     NSMutableArray<NSString *> *lines = [NSMutableArray array];
-    for (id key in (NSDictionary *)registry) {
-        id value = ((NSDictionary *)registry)[key];
-        [lines addObject:[NSString stringWithFormat:@"%@ -> %@", key, value]];
-    }
-    [PRMDebug setStatus:[NSString stringWithFormat:@"%lu pairs: %@",
-                         (unsigned long)[(NSDictionary *)registry count],
-                         [lines componentsJoinedByString:@" || "]]
-                 forKey:@"probe 8 registry"];
-
-    // The controller that owns the bar, and the item the manager targets.
-    id barController = PSGSend(controller, @selector(navBarViewController));
-    [PRMDebug setStatus:[NSString stringWithFormat:@"navBarViewController %@ | liquidGlass %@",
-                         barController ? NSStringFromClass([barController class]) : @"nil",
-                         [controller respondsToSelector:@selector(navBarIsLiquidGlassEnabled)]
-                          && ((BOOL (*)(id, SEL))objc_msgSend)(
-                                controller, @selector(navBarIsLiquidGlassEnabled))
-                             ? @"yes" : @"no"]
-                 forKey:@"probe 9 bar owner"];
+    PSGDumpCallButtons(window, window, 0, lines);
+    [PRMDebug setStatus:lines.count ? [lines componentsJoinedByString:@" || "] : @"none found"
+                 forKey:@"E call buttons"];
 }
 
 #pragma mark - Hook
 
-// Marks which delivery is running while control stays pinned during
-// development. Bumped every time this file is sent.
-static NSString *const kPSGProbeBuild = @"probe-4";
-
 %hook MSGThreadViewNavBarManager
 
-// Hooked here rather than on updateRightBarButtonItems: PSGThreadBar.x
-// already takes that method, and two hooks on one method in the same group
-// cannot both be installed. This one receives the bar model, so it runs
-// whenever the bar is built.
-- (void)setNavigationBarProps:(id)props {
+- (void)updateRightBarButtonItems {
     %orig;
     if (![PRMPrefs isEnabled:PRMKeyDebugEnabled]) return;
 
-    [PRMDebug setStatus:[NSString stringWithFormat:@"%@ | props %@",
-                         kPSGProbeBuild,
-                         props ? NSStringFromClass([props class]) : @"nil"]
-                 forKey:@"probe build"];
-    PSGReportNavigationItem(self);
-    PSGReportBarRegistry(PSGSend(self, @selector(delegate)));
+    id controller = PSGSend(self, @selector(delegate));
+    [PRMDebug setStatus:[NSString stringWithFormat:@"%@ | delegate %@",
+                         kPSGProbeBuild, PSGClass(controller)]
+                 forKey:@"@ build"];
 
-    // Read after the bar has laid out, so frames and wrappers are final.
-    id delegate = PSGSend(self, @selector(delegate));
-    UIViewController *controller = [delegate isKindOfClass:[UIViewController class]]
-                                 ? (UIViewController *)delegate : nil;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)),
+    PSGDumpRegistry(controller);
+    PSGDumpOwners(self, controller);
+    PSGDumpFactories(controller);
+
+    // Views are read once the bar has laid out.
+    UIViewController *host = [controller isKindOfClass:[UIViewController class]]
+                           ? (UIViewController *)controller : nil;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        UIWindow *window = controller.viewIfLoaded.window;
+        UIWindow *window = host.viewIfLoaded.window;
         if (window == nil) return;
-        PSGReportRenderedItems(window);
-        PSGReportColours(window);
-        PSGReportBarRegion(window);
+        PSGDumpBarViews(window);
+        PSGDumpButtons(window);
     });
 }
 
