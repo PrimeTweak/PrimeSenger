@@ -27,6 +27,14 @@ static CGRect gButtonFrame = {{0.0, 0.0}, {0.0, 0.0}};
 // keep a stale slot for the rest of the session.
 static BOOL gButtonSettled = NO;
 
+// Held strongly while observed: key-value observing does not survive the
+// observed object being released, and a weak reference would leave a
+// registration on a dead layer. Released as soon as the host changes.
+// Following the host in the same render pass replaces the delayed placement
+// that produced a bounce on tab changes and a moment of overlap when the
+// keyboard left.
+static UIView *gObservedHost = nil;
+
 static dispatch_queue_t gQueue = nil;
 static UIButton *gButton = nil;
 
@@ -589,28 +597,16 @@ static const NSUInteger kScanPatternCount =
                      - kFloatingEdgeInset - kFloatingSize;
 
     UIView *meta = [self metaFloatingButtonIn:window depth:0];
+    [self followHost:meta];
+
     if (meta != nil) {
         CGRect metaFrame = [meta convertRect:meta.bounds toView:window];
         BOOL metaVisible = [self viewIsOnScreen:meta];
 
-        // A host button caught mid transition reports a frame that is not
-        // where it will settle. Measuring it then fixes the button in a
-        // slot that is wrong as soon as the screen finishes changing.
-        BOOL plausible = CGRectGetMinY(metaFrame) > 0.0
-                      && CGRectGetMaxY(metaFrame) < window.bounds.size.height;
-        if (!plausible) {
-            [self setStatus:[NSString stringWithFormat:
-                             @"host frame implausible y=%.0f..%.0f, kept previous",
-                             CGRectGetMinY(metaFrame), CGRectGetMaxY(metaFrame)]
-                     forKey:@"floating button"];
-            return;
-        }
-
-        // The host can be out of sight for two unrelated reasons, and they
-        // call for opposite actions. Hidden because the user asked for it
-        // means the slot is free for good. Hidden for any other reason is
-        // a transition, and moving into a slot that is about to be taken
-        // back is what caused the button to drift and overlap.
+        // Out of sight for two unrelated reasons that call for opposite
+        // actions. Hidden because the user asked means the slot is free for
+        // good; hidden for any other reason is a transition, and taking a
+        // slot about to be reclaimed is what made the button drift.
         BOOL hostHiddenOnPurpose = [PRMPrefs isEnabled:PRMKeyHideMetaAIButton];
         if (!metaVisible && !hostHiddenOnPurpose) {
             [self setStatus:@"host out of sight temporarily, position kept"
@@ -620,15 +616,10 @@ static const NSUInteger kScanPatternCount =
 
         CGFloat bottom = metaVisible ? CGRectGetMinY(metaFrame) - kStackGap
                                      : CGRectGetMaxY(metaFrame);
-
-        // Nothing is written for a move too small to see. Re-placing on
-        // every screen change otherwise nudged the button a point at a time.
         CGRect wanted = CGRectMake(trailing, bottom - kFloatingSize,
                                    kFloatingSize, kFloatingSize);
-        if (gButtonSettled && fabs(CGRectGetMinY(wanted)
-                                   - CGRectGetMinY(button.frame)) < 2.0) {
-            return;
-        }
+
+        if (CGRectEqualToRect(wanted, button.frame)) return;
         button.frame = wanted;
         button.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
                                   UIViewAutoresizingFlexibleTopMargin;
@@ -637,10 +628,9 @@ static const NSUInteger kScanPatternCount =
             [UIView animateWithDuration:0.18 animations:^{ button.alpha = 1.0; }];
         }
         [self setStatus:[NSString stringWithFormat:
-                         @"%@ at y=%.0f, host %@ y=%.0f..%.0f",
-                         metaVisible ? @"stacked above host" : @"took host slot",
-                         button.frame.origin.y,
-                         NSStringFromClass([meta class]),
+                         @"%@ host at y=%.0f, host %@ y=%.0f..%.0f",
+                         metaVisible ? @"stacked above" : @"took slot of",
+                         CGRectGetMinY(wanted), NSStringFromClass([meta class]),
                          CGRectGetMinY(metaFrame), CGRectGetMaxY(metaFrame)]
                  forKey:@"floating button"];
         return;
@@ -666,6 +656,52 @@ static const NSUInteger kScanPatternCount =
                      @"host button NOT FOUND, fallback y=%.0f, bar %@",
                      button.frame.origin.y, barGone ? @"gone" : @"present"]
              forKey:@"floating button"];
+}
+
+// Observed rather than polled: the host's own layout writes layer.position,
+// and the callback lands before the frame is drawn, so the two move together
+// instead of one chasing the other.
++ (void)followHost:(UIView *)host {
+    if (host == gObservedHost) return;
+
+    UIView *previous = gObservedHost;
+    if (previous != nil) {
+        @try {
+            [previous.layer removeObserver:self forKeyPath:@"position"];
+            [previous.layer removeObserver:self forKeyPath:@"hidden"];
+        } @catch (NSException *ignored) {}
+    }
+
+    gObservedHost = host;
+    if (host == nil) return;
+
+    // Both on the layer: CALayer properties are observable by contract,
+    // where UIView's hidden is not.
+    @try {
+        [host.layer addObserver:self forKeyPath:@"position"
+                        options:NSKeyValueObservingOptionNew context:NULL];
+        [host.layer addObserver:self forKeyPath:@"hidden"
+                        options:NSKeyValueObservingOptionNew context:NULL];
+    } @catch (NSException *problem) {
+        gObservedHost = nil;
+        [self setStatus:[NSString stringWithFormat:@"cannot observe host: %@",
+                         problem.name]
+                 forKey:@"floating button"];
+    }
+}
+
++ (void)observeValueForKeyPath:(NSString *)path ofObject:(id)object
+                        change:(NSDictionary *)change context:(void *)context {
+    static BOOL placing = NO;
+    if (placing) return;
+
+    UIView *button = gButton;
+    UIWindow *window = button.window;
+    if (window == nil) return;
+
+    placing = YES;
+    [self positionButton:button inWindow:window];
+    placing = NO;
 }
 
 + (void)handleHold:(UILongPressGestureRecognizer *)hold {
