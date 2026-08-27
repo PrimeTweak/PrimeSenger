@@ -307,8 +307,15 @@ static const NSUInteger kScanPatternCount =
     __block NSString *result = nil;
     dispatch_sync(gQueue, ^{
         NSMutableArray<NSString *> *lines = [NSMutableArray array];
-        [lines addObject:[NSString stringWithFormat:@"PrimeSenger 1.0.1 — debug | FLEX %@",
-                          [self flexAvailable] ? @"linked" : @"NOT LINKED"]];
+        // The source count comes from the Makefile, so the report states
+        // what the build actually compiled without opening a build log.
+#ifndef PSG_FLEX_SOURCES
+#define PSG_FLEX_SOURCES 0
+#endif
+        [lines addObject:[NSString stringWithFormat:
+                          @"PrimeSenger 1.0.1 — debug | FLEX %@ (%d compiled)",
+                          [self flexAvailable] ? @"linked" : @"NOT LINKED",
+                          (int)PSG_FLEX_SOURCES]];
         [lines addObject:[NSString stringWithFormat:@"logging: %@",
                           [PRMPrefs isEnabled:PRMKeyDebugEnabled] ? @"on" : @"off"]];
 
@@ -682,7 +689,10 @@ static const NSUInteger kScanPatternCount =
     }
 
     gObservedHost = host;
-    if (host == nil) return;
+    if (host == nil) {
+        [self setStatus:@"no host to follow" forKey:@"floating follow"];
+        return;
+    }
 
     // Both on the layer: CALayer properties are observable by contract,
     // where UIView's hidden is not.
@@ -691,16 +701,21 @@ static const NSUInteger kScanPatternCount =
                         options:NSKeyValueObservingOptionNew context:NULL];
         [host.layer addObserver:gHostWatcher forKeyPath:@"hidden"
                         options:NSKeyValueObservingOptionNew context:NULL];
+        [self setStatus:[NSString stringWithFormat:@"following %@",
+                         NSStringFromClass([host class])]
+                 forKey:@"floating follow"];
     } @catch (NSException *problem) {
         gObservedHost = nil;
-        [self setStatus:[NSString stringWithFormat:@"cannot observe host: %@",
+        [self setStatus:[NSString stringWithFormat:@"cannot observe: %@",
                          problem.name]
-                 forKey:@"floating button"];
+                 forKey:@"floating follow"];
     }
 }
 
 + (void)hostDidMove {
     static BOOL placing = NO;
+    static NSUInteger moves = 0;
+    moves++;
     if (placing) return;
 
     UIView *button = gButton;
@@ -710,6 +725,10 @@ static const NSUInteger kScanPatternCount =
     placing = YES;
     [self positionButton:button inWindow:window];
     placing = NO;
+
+    [self setStatus:[NSString stringWithFormat:@"%lu host moves followed",
+                     (unsigned long)moves]
+             forKey:@"floating follow"];
 }
 
 + (void)handleHold:(UILongPressGestureRecognizer *)hold {
