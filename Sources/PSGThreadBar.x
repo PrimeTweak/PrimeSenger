@@ -4,15 +4,17 @@
 // the thread's navigation bar. Tapping it opens the one-shot gate and
 // invokes the receipt on the live message list.
 //
-// The item goes through -customOtherSendBarButtons:, the host's own factory
-// for extra bar buttons. Measured: it receives the thread theme and returns
-// an empty array, so the slot is unused and the host tints whatever it is
-// given. Adding to navigationItem instead placed the item alone in a UIKit
-// array, which is why it landed at the trailing edge, untinted.
+// The item is added to the controller's navigationItem. It renders at the
+// trailing edge, outside the host's own call buttons, because those are not
+// UIKit bar items: measured, rightBarButtonItems holds one entry, ours.
+//
+// customOtherSendBarButtons: is not the route. Despite returning an empty
+// array it feeds the send bar, not the navigation bar, and putting a
+// UIBarButtonItem in it crashes the thread on open.
 //
 // Signatures taken from the binary:
-//   -[MSGThreadViewController customOtherSendBarButtons:]          @24@0:8@16
-//   -[MSGThreadViewController customLeftBarButton:]                @24@0:8@16
+//   -[MSGThreadViewController viewDidLoad]                         v16@0:8
+//   -[MSGThreadViewController viewDidLayoutSubviews]               v16@0:8
 //   -[MSGMessageListViewController _notifyObserversDidSetAsRead:]  v20@0:8B16
 
 #import "PRMPrefs.h"
@@ -22,6 +24,7 @@
 #import <objc/message.h>
 
 static const void *kPSGEyeTarget = &kPSGEyeTarget;
+static const void *kPSGEyeItem = &kPSGEyeItem;
 
 #pragma mark - Lookups
 
@@ -92,41 +95,57 @@ static UIBarButtonItem *PSGMakeEyeItem(PSGReceiptEye *eye) {
     return item;
 }
 
+static void PSGSyncEye(UIViewController *host, NSString *pass) {
+    NSMutableArray<UIBarButtonItem *> *items =
+        [NSMutableArray arrayWithArray:host.navigationItem.rightBarButtonItems ?: @[]];
+    UIBarButtonItem *existing = objc_getAssociatedObject(host, kPSGEyeItem);
+
+    if (!PSGEyeWanted()) {
+        if (existing == nil) return;
+        [items removeObject:existing];
+        host.navigationItem.rightBarButtonItems = items;
+        objc_setAssociatedObject(host, kPSGEyeItem, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(host, kPSGEyeTarget, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return;
+    }
+
+    if (existing != nil && [items containsObject:existing]) return;
+
+    UIBarButtonItem *item = existing;
+    if (item == nil) {
+        PSGReceiptEye *eye = [[PSGReceiptEye alloc] init];
+        eye.host = host;
+        item = PSGMakeEyeItem(eye);
+        // Held by the controller: the item keeps only a weak target.
+        objc_setAssociatedObject(host, kPSGEyeTarget, eye,
+                                 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+
+    [items addObject:item];
+    host.navigationItem.rightBarButtonItems = items;
+    objc_setAssociatedObject(host, kPSGEyeItem, item, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+    [PRMDebug noteHook:@"manual receipt"];
+    [PRMDebug setStatus:[NSString stringWithFormat:@"%@ at %@, %lu items",
+                         existing ? @"re-added" : @"added", pass,
+                         (unsigned long)host.navigationItem.rightBarButtonItems.count]
+                 forKey:@"thread bar"];
+}
+
 #pragma mark - Hook
 
 %hook MSGThreadViewController
 
-// The host asks for extra trailing buttons here and expects an array. The
-// eye is appended to whatever it already returns, so a future build that
-// fills this slot keeps its own buttons.
-- (id)customOtherSendBarButtons:(id)theme {
-    id result = %orig;
+- (void)viewDidLoad {
+    %orig;
+    PSGSyncEye((UIViewController *)self, @"viewDidLoad");
+}
 
-    if (!PSGEyeWanted()) return result;
-
-    NSMutableArray *buttons = [NSMutableArray array];
-    if ([result isKindOfClass:[NSArray class]]) {
-        [buttons addObjectsFromArray:(NSArray *)result];
-    }
-
-    PSGReceiptEye *eye = objc_getAssociatedObject(self, kPSGEyeTarget);
-    if (eye == nil) {
-        eye = [[PSGReceiptEye alloc] init];
-        eye.host = (UIViewController *)self;
-        // Held by the controller: the item keeps only a weak target.
-        objc_setAssociatedObject(self, kPSGEyeTarget, eye,
-                                 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-
-    [buttons addObject:PSGMakeEyeItem(eye)];
-
-    [PRMDebug noteHook:@"manual receipt"];
-    [PRMDebug setStatus:[NSString stringWithFormat:@"%lu host + 1 eye, theme %@",
-                         (unsigned long)([result isKindOfClass:[NSArray class]]
-                                         ? [(NSArray *)result count] : 0),
-                         theme ? NSStringFromClass([theme class]) : @"nil"]
-                 forKey:@"thread bar"];
-    return buttons;
+- (void)viewDidLayoutSubviews {
+    %orig;
+    UIViewController *host = (UIViewController *)self;
+    if (host.viewIfLoaded.window == nil) return;
+    PSGSyncEye(host, @"layout");
 }
 
 %end

@@ -187,11 +187,47 @@ static void PSGReportBarRegion(UIWindow *window) {
 // The host exposes a hook-shaped factory for extra bar buttons. What it
 // receives and returns decides whether the eye can join their array.
 
+#pragma mark - Question 8
+
+// The thread bar is plugin driven: navBarRendererKeysByViewModelProviderKey
+// maps each view model provider to the renderer that draws its buttons. The
+// call buttons come from one of those pairs, and the classes involved are
+// Swift, so the mapping can only be read at runtime.
+static void PSGReportBarRegistry(id controller) {
+    id registry = PSGSend(controller, @selector(navBarRendererKeysByViewModelProviderKey));
+    if (![registry isKindOfClass:[NSDictionary class]]) {
+        [PRMDebug setStatus:[NSString stringWithFormat:@"registry is %@",
+                             registry ? NSStringFromClass([registry class]) : @"nil"]
+                     forKey:@"probe 8 registry"];
+        return;
+    }
+
+    NSMutableArray<NSString *> *lines = [NSMutableArray array];
+    for (id key in (NSDictionary *)registry) {
+        id value = ((NSDictionary *)registry)[key];
+        [lines addObject:[NSString stringWithFormat:@"%@ -> %@", key, value]];
+    }
+    [PRMDebug setStatus:[NSString stringWithFormat:@"%lu pairs: %@",
+                         (unsigned long)[(NSDictionary *)registry count],
+                         [lines componentsJoinedByString:@" || "]]
+                 forKey:@"probe 8 registry"];
+
+    // The controller that owns the bar, and the item the manager targets.
+    id barController = PSGSend(controller, @selector(navBarViewController));
+    [PRMDebug setStatus:[NSString stringWithFormat:@"navBarViewController %@ | liquidGlass %@",
+                         barController ? NSStringFromClass([barController class]) : @"nil",
+                         [controller respondsToSelector:@selector(navBarIsLiquidGlassEnabled)]
+                          && ((BOOL (*)(id, SEL))objc_msgSend)(
+                                controller, @selector(navBarIsLiquidGlassEnabled))
+                             ? @"yes" : @"no"]
+                 forKey:@"probe 9 bar owner"];
+}
+
 #pragma mark - Hook
 
 // Marks which delivery is running while control stays pinned during
 // development. Bumped every time this file is sent.
-static NSString *const kPSGProbeBuild = @"probe-3";
+static NSString *const kPSGProbeBuild = @"probe-4";
 
 %hook MSGThreadViewNavBarManager
 
@@ -208,6 +244,7 @@ static NSString *const kPSGProbeBuild = @"probe-3";
                          props ? NSStringFromClass([props class]) : @"nil"]
                  forKey:@"probe build"];
     PSGReportNavigationItem(self);
+    PSGReportBarRegistry(PSGSend(self, @selector(delegate)));
 
     // Read after the bar has laid out, so frames and wrappers are final.
     id delegate = PSGSend(self, @selector(delegate));
