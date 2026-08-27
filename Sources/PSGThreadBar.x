@@ -320,11 +320,12 @@ static void PSGSyncEye(UIViewController *host, NSString *pass) {
     static BOOL syncing = NO;
     if (syncing) return;
 
-    // The owning controller is reached through the delegate rather than a
-    // declared property: the class is not declared here, so the selector is
-    // checked before it is sent.
-    if (![self respondsToSelector:@selector(delegate)]) return;
-    id owner = ((id (*)(id, SEL))objc_msgSend)(self, @selector(delegate));
+    // Logos declares the hooked class forward only, so self carries an
+    // incomplete type and cannot be messaged. It is held as id first; every
+    // send then goes through that, as the probe already does.
+    id manager = self;
+    if (![manager respondsToSelector:@selector(delegate)]) return;
+    id owner = ((id (*)(id, SEL))objc_msgSend)(manager, @selector(delegate));
     if (![owner isKindOfClass:[UIViewController class]]) return;
 
     syncing = YES;
