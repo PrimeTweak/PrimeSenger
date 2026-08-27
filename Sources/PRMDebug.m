@@ -18,10 +18,11 @@ static const CGFloat kFloatingSize = 50.0;
 static const CGFloat kFloatingGlyphRatio = 0.38;
 static const CGFloat kFloatingEdgeInset = 16.0;
 
-// A settled button ignores host movements smaller than this. The host
-// shifts a few points between screens; anything larger is a real change of
-// slot, such as the keyboard leaving or the host being hidden.
-static const CGFloat kSettleTolerance = 24.0;
+// Distance from the safe area to the bottom of the host's own button, and
+// the extra rise when stacking above it: its 52pt height plus a 16pt gap.
+static const CGFloat kHostSlotLift = 65.0;
+static const CGFloat kStackedExtra = 68.0;
+
 
 // Frame set by dragging. Reapplied when the button is rebuilt.
 static CGRect gButtonFrame = {{0.0, 0.0}, {0.0, 0.0}};
@@ -30,22 +31,11 @@ static CGRect gButtonFrame = {{0.0, 0.0}, {0.0, 0.0}};
 // succeeded. It gates the first reveal so the button is never seen moving
 // into position; it does not stop later placements, or the button would
 // keep a stale slot for the rest of the session.
-static BOOL gButtonSettled = NO;
+// Raised while the keyboard is showing. The button is hidden then, not
+// moved, so it comes back exactly where it was.
+static BOOL gKeyboardUp = NO;
 
-// Held strongly while observed: key-value observing does not survive the
-// observed object being released, and a weak reference would leave a
-// registration on a dead layer. Released as soon as the host changes.
-// Following the host in the same render pass replaces the delayed placement
-// that produced a bounce on tab changes and a moment of overlap when the
-// keyboard left.
-static UIView *gObservedHost = nil;
 
-// Key-value observing takes an NSObject, and self in a class method is a
-// Class. One instance stands in and hands each change back.
-@interface PRMHostWatcher : NSObject
-@end
-
-static PRMHostWatcher *gHostWatcher = nil;
 
 static dispatch_queue_t gQueue = nil;
 static UIButton *gButton = nil;
@@ -73,6 +63,22 @@ static NSString *const kTargets[] = {
 static const NSUInteger kTargetCount = sizeof(kTargets) / sizeof(kTargets[0]);
 
 @implementation PRMDebug
+
+// Restores a hand placed position. Read once: the values are only written
+// by dragging.
++ (void)restoreButtonPlacement {
+    NSUserDefaults *store = NSUserDefaults.standardUserDefaults;
+    if (![store boolForKey:@"psg_button_moved"]) return;
+
+    NSString *stored = [store stringForKey:@"psg_button_frame"];
+    if (stored.length == 0) return;
+
+    CGRect frame = CGRectFromString(stored);
+    if (CGRectIsEmpty(frame)) return;
+
+    gButtonMoved = YES;
+    gButtonFrame = frame;
+}
 
 + (void)initialize {
     if (self != [PRMDebug class]) return;
@@ -429,6 +435,7 @@ static const NSUInteger kScanPatternCount =
 }
 
 + (void)arm {
+    [self restoreButtonPlacement];
     NSNotificationCenter *centre = [NSNotificationCenter defaultCenter];
     [centre addObserver:self
                selector:@selector(applicationDidBecomeActive)
@@ -455,11 +462,19 @@ static const NSUInteger kScanPatternCount =
                  object:nil];
 }
 
-// The keyboard hides the host's own button without changing screen, so a
-// placement is asked for once it has finished moving. Whether it is coming
-// or going does not matter: a host out of sight is left alone either way.
+// The button is hidden while the keyboard is up and returns to the same
+// place afterwards. Nothing is recalculated, so nothing can drift.
 + (void)keyboardFrameChanged:(NSNotification *)note {
-    [self refreshFloatingButton];
+    CGRect final = [note.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
+    CGFloat screenHeight = UIScreen.mainScreen.bounds.size.height;
+    BOOL up = CGRectGetMinY(final) < screenHeight - 1.0 && final.size.height > 0.0;
+
+    if (up == gKeyboardUp) return;
+    gKeyboardUp = up;
+
+    UIButton *button = gButton;
+    if (button == nil) return;
+    [UIView animateWithDuration:0.2 animations:^{ button.alpha = up ? 0.0 : 1.0; }];
 }
 
 // Reported whether or not the switch is touched, so one look at the report
@@ -471,9 +486,6 @@ static const NSUInteger kScanPatternCount =
 }
 
 + (void)applicationWillEnterForeground {
-    gButtonMoved = NO;
-    gButtonFrame = CGRectZero;
-    gButtonSettled = NO;
 }
 
 + (void)applicationDidBecomeActive {
@@ -486,24 +498,12 @@ static const NSUInteger kScanPatternCount =
                    dispatch_get_main_queue(), ^{
         [self applyFlexState];
     });
-    // A ladder rather than two fixed delays: each rung retries until the
-    // host's floating button can be measured, then stops. Waiting a fixed
-    // time made it arrive late; a single early pass placed it wrongly.
-    for (NSNumber *delay in @[@0.0, @0.15, @0.4, @0.9, @1.8, @3.0]) {
-        BOOL last = [delay isEqualToNumber:@3.0];
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
-                                     (int64_t)(delay.doubleValue * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
-            if (gButtonSettled) return;
-            [self installButton];
-            // The host may genuinely be absent on this screen, so the last
-            // rung accepts the fallback position rather than never showing.
-            if (last) {
-                gButtonSettled = YES;
-                [UIView animateWithDuration:0.18 animations:^{ gButton.alpha = 1.0; }];
-            }
-        });
-    }
+    // The position no longer depends on finding anything, so one pass is
+    // enough. A short delay lets the window exist first.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        [self installButton];
+    });
 }
 
 // Shown when the Menu tab is hidden, or when the switch requests it.
@@ -575,181 +575,61 @@ static const NSUInteger kScanPatternCount =
     [window addSubview:button];
     gButton = button;
 
-    if (gButtonMoved && !CGRectIsEmpty(gButtonFrame)) {
-        button.frame = gButtonFrame;
-        gButtonSettled = YES;
-    } else {
-        [self positionButton:button inWindow:window];
-    }
-
-    if (gButtonSettled) {
-        [UIView animateWithDuration:0.18 animations:^{ button.alpha = 1.0; }];
-    }
+    [self positionButton:button inWindow:window];
 }
 
-// Bottom trailing, clear of the tab bar when one is still on screen and
-// close to the edge when every tab has been hidden.
-// A view is only on screen if no ancestor is hidden. The host's floating
-// button is hidden through its controller's view, so its own hidden flag
-// stays NO while it is off screen.
-+ (BOOL)viewIsOnScreen:(UIView *)view {
-    for (UIView *node = view; node != nil; node = node.superview) {
-        if (node.hidden || node.alpha <= 0.01) return NO;
-    }
-    return view.window != nil;
-}
 
 // Locates the host's floating button for relative placement. The depth
 // limit covers the deepest position it has been observed at.
-+ (UIView *)metaFloatingButtonIn:(UIView *)view depth:(NSInteger)depth {
-    if (view == nil || depth > 24) return nil;
-    if ([NSStringFromClass([view class]) rangeOfString:@"MetaAIFAB"].location != NSNotFound
-        && view.bounds.size.width > 20.0) {
-        return view;
-    }
-    for (UIView *child in view.subviews) {
-        UIView *found = [self metaFloatingButtonIn:child depth:depth + 1];
-        if (found != nil) return found;
-    }
-    return nil;
+
+// Two fixed slots, derived from what the reports measured on a 956pt
+// screen with a 34pt safe area:
+//   host slot      956 - (34 + 65) - 50 = 807   matches "took host slot at y=807"
+//   stacked above  956 - (34 + 65 + 68) - 50 = 739   matches "stacked above at y=739"
+// The host is 52pt tall and sits 16pt above the tab bar, so stacking adds
+// 68pt. Nothing is looked up at placement time, so nothing can move the
+// button once it is placed.
++ (CGRect)slotInWindow:(UIWindow *)window {
+    CGFloat trailing = window.bounds.size.width - window.safeAreaInsets.right
+                     - kFloatingEdgeInset - kFloatingSize;
+    CGFloat lift = window.safeAreaInsets.bottom + kHostSlotLift;
+
+    // Only one condition moves it: the host being hidden by its switch.
+    if (![PRMPrefs isEnabled:PRMKeyHideMetaAIButton]) lift += kStackedExtra;
+
+    return CGRectMake(trailing,
+                      window.bounds.size.height - lift - kFloatingSize,
+                      kFloatingSize, kFloatingSize);
 }
 
 + (void)positionButton:(UIView *)button inWindow:(UIWindow *)window {
-    // The host button sits 16pt above the tab bar. The same gap is used
-    // between the two buttons.
-    static const CGFloat kStackGap = 16.0;
-
-    CGFloat trailing = window.bounds.size.width - window.safeAreaInsets.right
-                     - kFloatingEdgeInset - kFloatingSize;
-
-    UIView *meta = [self metaFloatingButtonIn:window depth:0];
-    [self followHost:meta];
-
-    if (meta != nil) {
-        CGRect metaFrame = [meta convertRect:meta.bounds toView:window];
-        BOOL metaVisible = [self viewIsOnScreen:meta];
-
-        // Out of sight for two unrelated reasons that call for opposite
-        // actions. Hidden because the user asked means the slot is free for
-        // good; hidden for any other reason is a transition, and taking a
-        // slot about to be reclaimed is what made the button drift.
-        BOOL hostHiddenOnPurpose = [PRMPrefs isEnabled:PRMKeyHideMetaAIButton];
-        if (!metaVisible && !hostHiddenOnPurpose) {
-            [self setStatus:@"host out of sight temporarily, position kept"
-                     forKey:@"floating button"];
-            return;
-        }
-
-        CGFloat bottom = metaVisible ? CGRectGetMinY(metaFrame) - kStackGap
-                                     : CGRectGetMaxY(metaFrame);
-        CGRect wanted = CGRectMake(trailing, bottom - kFloatingSize,
-                                   kFloatingSize, kFloatingSize);
-
-        if (CGRectEqualToRect(wanted, button.frame)) return;
-
-        // Measured: the host's own button shifts by a few points as screens
-        // change, and following every shift is the movement seen between
-        // tabs. Once placed, only a move large enough to matter is taken.
-        if (gButtonSettled
-            && fabs(CGRectGetMinY(wanted) - CGRectGetMinY(button.frame)) < kSettleTolerance
-            && fabs(CGRectGetMinX(wanted) - CGRectGetMinX(button.frame)) < kSettleTolerance) {
-            return;
-        }
-        button.frame = wanted;
+    // A button the user has dragged keeps its place, across screens and
+    // across launches.
+    if (gButtonMoved && !CGRectIsEmpty(gButtonFrame)) {
+        button.frame = gButtonFrame;
         button.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
                                   UIViewAutoresizingFlexibleTopMargin;
-        gButtonSettled = YES;
-        if (button.alpha < 1.0) {
+        [self setStatus:[NSString stringWithFormat:@"moved by hand, y=%.0f",
+                         CGRectGetMinY(gButtonFrame)]
+                 forKey:@"floating button"];
+        if (button.alpha < 1.0 && !gKeyboardUp) {
             [UIView animateWithDuration:0.18 animations:^{ button.alpha = 1.0; }];
         }
-        [self setStatus:[NSString stringWithFormat:
-                         @"%@ host at y=%.0f, host %@ y=%.0f..%.0f",
-                         metaVisible ? @"stacked above" : @"took slot of",
-                         CGRectGetMinY(wanted), NSStringFromClass([meta class]),
-                         CGRectGetMinY(metaFrame), CGRectGetMaxY(metaFrame)]
-                 forKey:@"floating button"];
         return;
     }
 
-    // Fallback when the host button is absent: 16pt above the tab bar, or
-    // near the edge when no bar remains.
-    BOOL barGone = [PRMPrefs isEnabled:PRMKeyHideTabChats]
-                && [PRMPrefs isEnabled:PRMKeyHideTabStories]
-                && [PRMPrefs isEnabled:PRMKeyHideTabNotifications]
-                && [PRMPrefs isEnabled:PRMKeyHideTabMenu];
-
-    CGFloat lift = window.safeAreaInsets.bottom + (barGone ? 8.0 : 65.0);
-    button.frame = CGRectMake(trailing,
-                              window.bounds.size.height - lift - kFloatingSize,
-                              kFloatingSize, kFloatingSize);
+    CGRect slot = [self slotInWindow:window];
+    if (!CGRectEqualToRect(slot, button.frame)) button.frame = slot;
     button.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
                               UIViewAutoresizingFlexibleTopMargin;
-    if (button.alpha < 1.0) {
+
+    if (button.alpha < 1.0 && !gKeyboardUp) {
         [UIView animateWithDuration:0.18 animations:^{ button.alpha = 1.0; }];
     }
-    [self setStatus:[NSString stringWithFormat:
-                     @"host button NOT FOUND, fallback y=%.0f, bar %@",
-                     button.frame.origin.y, barGone ? @"gone" : @"present"]
+    [self setStatus:[NSString stringWithFormat:@"%@ slot, y=%.0f",
+                     [PRMPrefs isEnabled:PRMKeyHideMetaAIButton] ? @"host" : @"stacked",
+                     CGRectGetMinY(slot)]
              forKey:@"floating button"];
-}
-
-// Observed rather than polled: the host's own layout writes layer.position,
-// and the callback lands before the frame is drawn, so the two move together
-// instead of one chasing the other.
-+ (void)followHost:(UIView *)host {
-    if (host == gObservedHost) return;
-
-    if (gHostWatcher == nil) gHostWatcher = [[PRMHostWatcher alloc] init];
-
-    UIView *previous = gObservedHost;
-    if (previous != nil) {
-        @try {
-            [previous.layer removeObserver:gHostWatcher forKeyPath:@"position"];
-            [previous.layer removeObserver:gHostWatcher forKeyPath:@"hidden"];
-        } @catch (NSException *ignored) {}
-    }
-
-    gObservedHost = host;
-    if (host == nil) {
-        [self setStatus:@"no host to follow" forKey:@"floating follow"];
-        return;
-    }
-
-    // Both on the layer: CALayer properties are observable by contract,
-    // where UIView's hidden is not.
-    @try {
-        [host.layer addObserver:gHostWatcher forKeyPath:@"position"
-                        options:NSKeyValueObservingOptionNew context:NULL];
-        [host.layer addObserver:gHostWatcher forKeyPath:@"hidden"
-                        options:NSKeyValueObservingOptionNew context:NULL];
-        [self setStatus:[NSString stringWithFormat:@"following %@",
-                         NSStringFromClass([host class])]
-                 forKey:@"floating follow"];
-    } @catch (NSException *problem) {
-        gObservedHost = nil;
-        [self setStatus:[NSString stringWithFormat:@"cannot observe: %@",
-                         problem.name]
-                 forKey:@"floating follow"];
-    }
-}
-
-+ (void)hostDidMove {
-    static BOOL placing = NO;
-    static NSUInteger moves = 0;
-    moves++;
-    if (placing) return;
-
-    UIView *button = gButton;
-    UIWindow *window = button.window;
-    if (window == nil) return;
-
-    placing = YES;
-    [self positionButton:button inWindow:window];
-    placing = NO;
-
-    [self setStatus:[NSString stringWithFormat:@"%lu host moves followed",
-                     (unsigned long)moves]
-             forKey:@"floating follow"];
 }
 
 + (void)handleHold:(UILongPressGestureRecognizer *)hold {
@@ -787,10 +667,14 @@ static const NSUInteger kScanPatternCount =
     if (view == nil || view.superview == nil) return;
     // A dragged button is not repositioned until the next foreground.
     gButtonMoved = YES;
+    [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"psg_button_moved"];
     CGPoint delta = [pan translationInView:view.superview];
     view.center = CGPointMake(view.center.x + delta.x, view.center.y + delta.y);
     [pan setTranslation:CGPointZero inView:view.superview];
     gButtonFrame = view.frame;
+    // Kept across launches: a button placed by hand stays where it was put.
+    [NSUserDefaults.standardUserDefaults
+        setObject:NSStringFromCGRect(gButtonFrame) forKey:@"psg_button_frame"];
 }
 
 + (void)present {
@@ -839,11 +723,3 @@ static const NSUInteger kScanPatternCount =
 
 @end
 
-@implementation PRMHostWatcher
-
-- (void)observeValueForKeyPath:(NSString *)path ofObject:(id)object
-                        change:(NSDictionary *)change context:(void *)context {
-    [PRMDebug hostDidMove];
-}
-
-@end

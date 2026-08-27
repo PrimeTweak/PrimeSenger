@@ -45,8 +45,6 @@
 // One-line state per subsystem, shown at the top of the report.
 + (void)setStatus:(NSString *)value forKey:(NSString *)name;
 
-// Reports whether a view and all of its ancestors are visible.
-+ (BOOL)viewIsOnScreen:(UIView *)view;
 
 // Re-places the floating button after the keyboard has moved.
 + (void)keyboardFrameChanged:(NSNotification *)note;
@@ -54,8 +52,6 @@
 // Records whether fleXD is linked in, for the report.
 + (void)reportFlexPresence;
 
-// Re-places the floating button when the host's own has moved.
-+ (void)hostDidMove;
 
 // Places or removes the floating button according to the current switches.
 + (void)installButton;
