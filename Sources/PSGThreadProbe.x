@@ -220,15 +220,22 @@ static void PSGReportBarRegion(UIWindow *window) {
 
 // Marks which delivery is running while control stays pinned during
 // development. Bumped every time this file is sent.
-static NSString *const kPSGProbeBuild = @"probe-2";
+static NSString *const kPSGProbeBuild = @"probe-3";
 
 %hook MSGThreadViewNavBarManager
 
-- (void)updateRightBarButtonItems {
+// Hooked here rather than on updateRightBarButtonItems: PSGThreadBar.x
+// already takes that method, and two hooks on one method in the same group
+// cannot both be installed. This one receives the bar model, so it runs
+// whenever the bar is built.
+- (void)setNavigationBarProps:(id)props {
     %orig;
     if (![PRMPrefs isEnabled:PRMKeyDebugEnabled]) return;
 
-    [PRMDebug setStatus:kPSGProbeBuild forKey:@"probe build"];
+    [PRMDebug setStatus:[NSString stringWithFormat:@"%@ | props %@",
+                         kPSGProbeBuild,
+                         props ? NSStringFromClass([props class]) : @"nil"]
+                 forKey:@"probe build"];
     PSGReportNavigationItem(self);
 
     // Read after the bar has laid out, so frames and wrappers are final.
