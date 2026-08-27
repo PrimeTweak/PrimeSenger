@@ -9,7 +9,6 @@
 #import "PRMPrefs.h"
 #import "PRMDebug.h"
 #import "PSGReadReceipts.h"
-#import <objc/runtime.h>
 
 %hook MSGMessageListViewController
 
@@ -35,24 +34,26 @@
 - (void)viewDidLoad {
     %orig;
 
-    Ivar flag = class_getInstanceVariable([self class], "_disableReadReceipts");
-    if (flag == NULL) {
-        [PRMDebug setStatus:@"_disableReadReceipts ivar NOT FOUND" forKey:@"read receipts"];
-        return;
-    }
-
+    // Reached through key-value coding rather than the ivar layout: inside
+    // a hook the class is only forward declared, so self has no interface
+    // and the runtime calls cannot be typed.
+    id target = (id)self;
     BOOL wanted = ![PRMPrefs isEnabled:PRMKeyMasterDisable]
                && [PRMPrefs isEnabled:PRMKeyReadAnonymously];
 
-    ptrdiff_t offset = ivar_getOffset(flag);
-    BOOL *slot = (BOOL *)((__bridge void *)self + offset);
-    BOOL before = *slot;
-    *slot = wanted;
-
-    [PSGReadReceipts setLiveController:wanted ? self : nil];
-    [PRMDebug setStatus:[NSString stringWithFormat:@"_disableReadReceipts %@ -> %@",
-                         before ? @"YES" : @"NO", wanted ? @"YES" : @"NO"]
-                 forKey:@"read receipts"];
+    @try {
+        NSNumber *before = [target valueForKey:@"disableReadReceipts"];
+        [target setValue:@(wanted) forKey:@"disableReadReceipts"];
+        [PSGReadReceipts setLiveController:wanted ? target : nil];
+        [PRMDebug setStatus:[NSString stringWithFormat:@"disableReadReceipts %@ -> %@",
+                             before.boolValue ? @"YES" : @"NO",
+                             wanted ? @"YES" : @"NO"]
+                     forKey:@"read receipts"];
+    } @catch (NSException *problem) {
+        [PRMDebug setStatus:[NSString stringWithFormat:@"key unreachable: %@",
+                             problem.name]
+                     forKey:@"read receipts"];
+    }
 }
 
 

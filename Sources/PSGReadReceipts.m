@@ -1,6 +1,5 @@
 #import "PSGReadReceipts.h"
 #import "PRMDebug.h"
-#import <objc/runtime.h>
 #import <objc/message.h>
 
 static BOOL gGateOpen = NO;
@@ -22,27 +21,29 @@ static const NSTimeInterval kWindow = 2.0;
     return YES;
 }
 
-+ (BOOL *)flagSlotFor:(id)controller {
-    if (controller == nil) return NULL;
-    Ivar flag = class_getInstanceVariable([controller class], "_disableReadReceipts");
-    if (flag == NULL) return NULL;
-    return (BOOL *)((__bridge void *)controller + ivar_getOffset(flag));
+// Written through key-value coding: the ivar is private and its layout is
+// not exposed, but the key reaches it.
++ (BOOL)setFlag:(BOOL)value on:(id)controller {
+    if (controller == nil) return NO;
+    @try {
+        [controller setValue:@(value) forKey:@"disableReadReceipts"];
+        return YES;
+    } @catch (NSException *problem) {
+        return NO;
+    }
 }
 
 + (BOOL)sendReceiptOn:(id)messageList {
     id target = messageList ?: gLiveController;
-    BOOL *slot = [self flagSlotFor:target];
 
-    if (slot == NULL) {
-        [PRMDebug setStatus:[NSString stringWithFormat:@"flag unreachable on %@",
+    // Lowered, so the host may send. The gate lets one suppressed
+    // notification through as well, which keeps the interface in step.
+    if (![self setFlag:NO on:target]) {
+        [PRMDebug setStatus:[NSString stringWithFormat:@"key unreachable on %@",
                              target ? NSStringFromClass([target class]) : @"nil"]
                      forKey:@"manual receipt"];
         return NO;
     }
-
-    // Lowered, so the host may send. The gate lets one suppressed
-    // notification through as well, which keeps the interface in step.
-    *slot = NO;
     gGateOpen = YES;
 
     SEL notify = @selector(_notifyObserversDidSetAsRead:);
@@ -53,9 +54,7 @@ static const NSTimeInterval kWindow = 2.0;
     __weak id weakTarget = target;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kWindow * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        id strongTarget = weakTarget;
-        BOOL *later = [self flagSlotFor:strongTarget];
-        if (later != NULL) *later = YES;
+        [self setFlag:YES on:weakTarget];
         gGateOpen = NO;
     });
 
