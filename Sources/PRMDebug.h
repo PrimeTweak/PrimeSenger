@@ -75,6 +75,9 @@
 + (BOOL)flexAvailable;
 + (void)toggleFlex;
 
+// Brings the explorer in line with the stored preference.
++ (void)applyFlexState;
+
 @end
 
 @interface PRMDebug (PRMLauncher)

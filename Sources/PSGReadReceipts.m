@@ -1,7 +1,6 @@
 #import "PSGReadReceipts.h"
 #import "PRMDebug.h"
 #import <objc/message.h>
-#import <dlfcn.h>
 
 static BOOL gGateOpen = NO;
 static __weak id gLiveController = nil;
@@ -34,11 +33,16 @@ static const NSTimeInterval kWindow = 2.0;
     }
 }
 
-// Measured in the host binary: the mailbox SDK exposes a C entry point that
-// marks a thread read, and posts MCAMailboxSDKDidMarkThreadAsReadNotification
-// when it lands. Lowering the flag alone sends nothing, because nothing in
-// the host asks again once the thread is already on screen.
-typedef void (*PSGMarkReadFunction)(id, id);
+// The receipt is sent by the host's own read path, gated on the flag. No
+// exported C entry point could be reached: the symbol named in the binary
+// strings is not in the symbol table. Instead the flag is lowered and the
+// host is asked to rerun the path it already runs on appearance and on
+// return to the foreground.
+//
+// Measured on MSGMessageListViewController:
+//   -viewDidAppear:                     v20@0:8B16
+//   -_handleApplicationDidBecomeActive: v24@0:8@16
+//   -_notifyObserversDidSetAsRead:      v20@0:8B16
 
 + (BOOL)sendReceiptOn:(id)messageList {
     id target = messageList ?: gLiveController;
@@ -47,33 +51,31 @@ typedef void (*PSGMarkReadFunction)(id, id);
         return NO;
     }
 
-    // Lowered first: the send path checks it, and the gate lets one
-    // suppressed notification through so the interface follows.
+    // Lowered first: the send path checks it. The gate lets one suppressed
+    // notification through so the interface follows.
     BOOL lowered = [self setFlag:NO on:target];
     gGateOpen = YES;
 
-    NSMutableArray<NSString *> *tried = [NSMutableArray array];
-    BOOL sent = NO;
+    NSMutableArray<NSString *> *ran = [NSMutableArray array];
 
-    // The host's own entry point, resolved by name so a rename is reported
-    // rather than crashed on.
-    PSGMarkReadFunction mark = (PSGMarkReadFunction)
-        dlsym(RTLD_DEFAULT, "MCAMailboxSDKMarkAsReadThreadWithThreadIdentifier");
-    id threadKey = nil;
-    @try { threadKey = [target valueForKey:@"threadQueryKey"]; } @catch (NSException *ignored) {}
+    // Rerun the paths the host itself uses. Each is measured to exist; any
+    // that does not respond is skipped and reported.
+    SEL becameActive = @selector(_handleApplicationDidBecomeActive:);
+    if ([target respondsToSelector:becameActive]) {
+        ((void (*)(id, SEL, id))objc_msgSend)(target, becameActive, nil);
+        [ran addObject:@"didBecomeActive"];
+    }
 
-    if (mark != NULL && threadKey != nil) {
-        mark(threadKey, nil);
-        [tried addObject:@"mailbox SDK"];
-        sent = YES;
-    } else {
-        [tried addObject:mark == NULL ? @"symbol absent" : @"no thread key"];
+    SEL appeared = @selector(viewDidAppear:);
+    if ([target respondsToSelector:appeared]) {
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(target, appeared, NO);
+        [ran addObject:@"viewDidAppear"];
     }
 
     SEL notify = @selector(_notifyObserversDidSetAsRead:);
     if ([target respondsToSelector:notify]) {
         ((void (*)(id, SEL, BOOL))objc_msgSend)(target, notify, YES);
-        [tried addObject:@"observers"];
+        [ran addObject:@"observers"];
     }
 
     __weak id weakTarget = target;
@@ -83,12 +85,11 @@ typedef void (*PSGMarkReadFunction)(id, id);
         gGateOpen = NO;
     });
 
-    [PRMDebug setStatus:[NSString stringWithFormat:@"flag %@ | %@ | key %@",
+    [PRMDebug setStatus:[NSString stringWithFormat:@"flag %@ | ran %@",
                          lowered ? @"lowered" : @"UNREACHABLE",
-                         [tried componentsJoinedByString:@", "],
-                         threadKey ? NSStringFromClass([threadKey class]) : @"nil"]
+                         ran.count ? [ran componentsJoinedByString:@", "] : @"nothing"]
                  forKey:@"manual receipt"];
-    return sent;
+    return lowered && ran.count > 0;
 }
 
 @end

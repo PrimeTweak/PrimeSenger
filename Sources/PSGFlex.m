@@ -19,7 +19,11 @@
     return NSClassFromString(@"FLEXManager") != Nil;
 }
 
-+ (void)toggleFlex {
+// Driven by the preference rather than by the explorer's own state. The
+// earlier version read isHidden and inverted it, so a relaunch left the
+// explorer closed with the switch still on, and turning the switch off
+// opened it.
++ (void)applyFlexState {
     Class manager = NSClassFromString(@"FLEXManager");
     if (manager == Nil) {
         [PRMDebug setStatus:@"FLEXManager absent, the vendor clone is not in the dylib"
@@ -33,16 +37,25 @@
         return;
     }
 
-    BOOL hidden = YES;
+    BOOL wanted = ![PRMPrefs isEnabled:PRMKeyMasterDisable]
+               && [PRMPrefs isEnabled:PRMKeyFlexEnabled];
+
+    BOOL showing = NO;
     if ([shared respondsToSelector:@selector(isHidden)]) {
-        hidden = ((BOOL (*)(id, SEL))objc_msgSend)(shared, @selector(isHidden));
+        showing = !((BOOL (*)(id, SEL))objc_msgSend)(shared, @selector(isHidden));
+    }
+    if (wanted == showing) {
+        [PRMDebug setStatus:[NSString stringWithFormat:@"already %@",
+                             wanted ? @"showing" : @"hidden"]
+                     forKey:@"flex"];
+        return;
     }
 
-    if (!hidden) {
+    if (!wanted) {
         if ([shared respondsToSelector:@selector(hideExplorer)]) {
             ((void (*)(id, SEL))objc_msgSend)(shared, @selector(hideExplorer));
-            [PRMDebug setStatus:@"hidden" forKey:@"flex"];
         }
+        [PRMDebug setStatus:@"hidden" forKey:@"flex"];
         return;
     }
 
@@ -60,21 +73,20 @@
     if (scene != nil && [shared respondsToSelector:@selector(showExplorerFromScene:)]) {
         ((void (*)(id, SEL, id))objc_msgSend)(shared,
                                               @selector(showExplorerFromScene:), scene);
-        [PRMDebug setStatus:[NSString stringWithFormat:@"shown from scene %@",
-                             NSStringFromClass([scene class])]
-                     forKey:@"flex"];
+        [PRMDebug setStatus:@"shown from scene" forKey:@"flex"];
         return;
     }
 
-    if (![shared respondsToSelector:@selector(showExplorer)]) {
-        [PRMDebug setStatus:@"neither showExplorer nor showExplorerFromScene:"
-                     forKey:@"flex"];
-        return;
+    if ([shared respondsToSelector:@selector(showExplorer)]) {
+        ((void (*)(id, SEL))objc_msgSend)(shared, @selector(showExplorer));
+        [PRMDebug setStatus:@"shown" forKey:@"flex"];
     }
-    ((void (*)(id, SEL))objc_msgSend)(shared, @selector(showExplorer));
-    [PRMDebug setStatus:[NSString stringWithFormat:@"shown, scene %@",
-                         scene ? @"present but unused" : @"NONE FOUND"]
-                 forKey:@"flex"];
+}
+
+// Kept for the settings row, which asks for the state to be reapplied
+// after it has written the preference.
++ (void)toggleFlex {
+    [self applyFlexState];
 }
 
 @end

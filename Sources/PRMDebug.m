@@ -18,6 +18,11 @@ static const CGFloat kFloatingSize = 50.0;
 static const CGFloat kFloatingGlyphRatio = 0.38;
 static const CGFloat kFloatingEdgeInset = 16.0;
 
+// A settled button ignores host movements smaller than this. The host
+// shifts a few points between screens; anything larger is a real change of
+// slot, such as the keyboard leaving or the host being hidden.
+static const CGFloat kSettleTolerance = 24.0;
+
 // Frame set by dragging. Reapplied when the button is rebuilt.
 static CGRect gButtonFrame = {{0.0, 0.0}, {0.0, 0.0}};
 
@@ -474,6 +479,13 @@ static const NSUInteger kScanPatternCount =
 + (void)applicationDidBecomeActive {
     [self reportDesignMode];
     [self reportFlexPresence];
+
+    // The explorer does not survive a relaunch on its own, so the stored
+    // preference is reapplied once the scene is active.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        [self applyFlexState];
+    });
     // A ladder rather than two fixed delays: each rung retries until the
     // host's floating button can be measured, then stops. Waiting a fixed
     // time made it arrive late; a single early pass placed it wrongly.
@@ -634,6 +646,15 @@ static const NSUInteger kScanPatternCount =
                                    kFloatingSize, kFloatingSize);
 
         if (CGRectEqualToRect(wanted, button.frame)) return;
+
+        // Measured: the host's own button shifts by a few points as screens
+        // change, and following every shift is the movement seen between
+        // tabs. Once placed, only a move large enough to matter is taken.
+        if (gButtonSettled
+            && fabs(CGRectGetMinY(wanted) - CGRectGetMinY(button.frame)) < kSettleTolerance
+            && fabs(CGRectGetMinX(wanted) - CGRectGetMinX(button.frame)) < kSettleTolerance) {
+            return;
+        }
         button.frame = wanted;
         button.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
                                   UIViewAutoresizingFlexibleTopMargin;
