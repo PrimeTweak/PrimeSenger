@@ -1,4 +1,19 @@
-TARGET := iphone:clang:16.5:15.1
+# fleXD 6.1.0 is written against the iOS 26 SDK: eleven of its files guard
+# blocks with @available(iOS 26) and reference symbols absent from older
+# headers. Xcode carries that SDK, but Theos only looks in its own
+# directory, so it is linked in here rather than in the workflow: .github
+# is hidden in Finder and has been left behind before.
+SDK_LINK := $(shell \
+    if command -v xcrun >/dev/null 2>&1; then \
+        mkdir -p "$(THEOS)/sdks"; \
+        ln -sfn "$$(xcrun --sdk iphoneos --show-sdk-path)" \
+                "$(THEOS)/sdks/iPhoneOS$$(xcrun --sdk iphoneos --show-sdk-version).sdk"; \
+    fi 2>&1)
+
+# latest picks the newest SDK Theos can see. The deployment target stays
+# 15.1, so the tweak still runs on older systems.
+TARGET := iphone:clang:latest:15.1
+$(info SDK link: $(if $(SDK_LINK),$(SDK_LINK),done))
 # The host app and its frameworks are arm64 only. Shipping an extra
 # slice leaves on-device signers with a slice they may not cover.
 ARCHS = arm64
