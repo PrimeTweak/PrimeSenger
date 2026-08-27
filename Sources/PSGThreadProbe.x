@@ -147,6 +147,75 @@ static void PSGReportColours(UIWindow *window) {
                  forKey:@"probe 3 colours"];
 }
 
+#pragma mark - Question 6
+
+// Names the class that draws the call buttons. They are not
+// *BarButtonItemView, so the bar region is dumped whole.
+static void PSGDumpBarRegion(UIView *root, UIView *window, NSInteger depth,
+                             NSMutableArray<NSString *> *lines) {
+    if (root == nil || depth > 14 || lines.count > 40) return;
+
+    CGRect frame = [root convertRect:root.bounds toView:window];
+    BOOL inBar = CGRectGetMinY(frame) >= 30.0 && CGRectGetMaxY(frame) <= 130.0;
+    BOOL buttonSized = frame.size.width > 20.0 && frame.size.width < 90.0
+                    && frame.size.height > 20.0 && frame.size.height < 70.0;
+
+    if (inBar && buttonSized && PSGOnScreen(root)) {
+        [lines addObject:[NSString stringWithFormat:@"%@ x%.0f y%.0f %.0fx%.0f d%ld%@",
+                          NSStringFromClass([root class]),
+                          CGRectGetMinX(frame), CGRectGetMinY(frame),
+                          frame.size.width, frame.size.height, (long)depth,
+                          root.accessibilityLabel.length
+                              ? [@" " stringByAppendingString:root.accessibilityLabel]
+                              : @""]];
+    }
+    for (UIView *child in root.subviews) {
+        PSGDumpBarRegion(child, window, depth + 1, lines);
+    }
+}
+
+static void PSGReportBarRegion(UIWindow *window) {
+    NSMutableArray<NSString *> *lines = [NSMutableArray array];
+    PSGDumpBarRegion(window, window, 0, lines);
+    [PRMDebug setStatus:lines.count ? [lines componentsJoinedByString:@" || "]
+                                    : @"nothing button-sized in the bar region"
+                 forKey:@"probe 4 bar region"];
+}
+
+#pragma mark - Question 7
+
+// The host exposes a hook-shaped factory for extra bar buttons. What it
+// receives and returns decides whether the eye can join their array.
+%hook MSGThreadViewController
+
+- (id)customOtherSendBarButtons:(id)argument {
+    id result = %orig;
+    if ([PRMPrefs isEnabled:PRMKeyDebugEnabled]) {
+        [PRMDebug setStatus:[NSString stringWithFormat:@"arg %@ -> %@ (%@)",
+                             argument ? NSStringFromClass([argument class]) : @"nil",
+                             result ? NSStringFromClass([result class]) : @"nil",
+                             [result respondsToSelector:@selector(count)]
+                                 ? [NSString stringWithFormat:@"%lu",
+                                    (unsigned long)[result count]]
+                                 : @"-"]
+                     forKey:@"probe 5 customOther"];
+    }
+    return result;
+}
+
+- (id)customLeftBarButton:(id)argument {
+    id result = %orig;
+    if ([PRMPrefs isEnabled:PRMKeyDebugEnabled]) {
+        [PRMDebug setStatus:[NSString stringWithFormat:@"arg %@ -> %@",
+                             argument ? NSStringFromClass([argument class]) : @"nil",
+                             result ? NSStringFromClass([result class]) : @"nil"]
+                     forKey:@"probe 6 customLeft"];
+    }
+    return result;
+}
+
+%end
+
 #pragma mark - Hook
 
 %hook MSGThreadViewNavBarManager
@@ -167,6 +236,7 @@ static void PSGReportColours(UIWindow *window) {
         if (window == nil) return;
         PSGReportRenderedItems(window);
         PSGReportColours(window);
+        PSGReportBarRegion(window);
     });
 }
 
