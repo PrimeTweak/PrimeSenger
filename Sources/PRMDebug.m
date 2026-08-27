@@ -35,6 +35,13 @@ static BOOL gButtonSettled = NO;
 // keyboard left.
 static UIView *gObservedHost = nil;
 
+// Key-value observing takes an NSObject, and self in a class method is a
+// Class. One instance stands in and hands each change back.
+@interface PRMHostWatcher : NSObject
+@end
+
+static PRMHostWatcher *gHostWatcher = nil;
+
 static dispatch_queue_t gQueue = nil;
 static UIButton *gButton = nil;
 
@@ -664,11 +671,13 @@ static const NSUInteger kScanPatternCount =
 + (void)followHost:(UIView *)host {
     if (host == gObservedHost) return;
 
+    if (gHostWatcher == nil) gHostWatcher = [[PRMHostWatcher alloc] init];
+
     UIView *previous = gObservedHost;
     if (previous != nil) {
         @try {
-            [previous.layer removeObserver:self forKeyPath:@"position"];
-            [previous.layer removeObserver:self forKeyPath:@"hidden"];
+            [previous.layer removeObserver:gHostWatcher forKeyPath:@"position"];
+            [previous.layer removeObserver:gHostWatcher forKeyPath:@"hidden"];
         } @catch (NSException *ignored) {}
     }
 
@@ -678,9 +687,9 @@ static const NSUInteger kScanPatternCount =
     // Both on the layer: CALayer properties are observable by contract,
     // where UIView's hidden is not.
     @try {
-        [host.layer addObserver:self forKeyPath:@"position"
+        [host.layer addObserver:gHostWatcher forKeyPath:@"position"
                         options:NSKeyValueObservingOptionNew context:NULL];
-        [host.layer addObserver:self forKeyPath:@"hidden"
+        [host.layer addObserver:gHostWatcher forKeyPath:@"hidden"
                         options:NSKeyValueObservingOptionNew context:NULL];
     } @catch (NSException *problem) {
         gObservedHost = nil;
@@ -690,8 +699,7 @@ static const NSUInteger kScanPatternCount =
     }
 }
 
-+ (void)observeValueForKeyPath:(NSString *)path ofObject:(id)object
-                        change:(NSDictionary *)change context:(void *)context {
++ (void)hostDidMove {
     static BOOL placing = NO;
     if (placing) return;
 
@@ -787,6 +795,15 @@ static const NSUInteger kScanPatternCount =
 
 + (void)dismiss:(UITapGestureRecognizer *)recognizer {
     [recognizer.view removeFromSuperview];
+}
+
+@end
+
+@implementation PRMHostWatcher
+
+- (void)observeValueForKeyPath:(NSString *)path ofObject:(id)object
+                        change:(NSDictionary *)change context:(void *)context {
+    [PRMDebug hostDidMove];
 }
 
 @end

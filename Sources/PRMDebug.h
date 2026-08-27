@@ -54,6 +54,9 @@
 // Records whether fleXD is linked in, for the report.
 + (void)reportFlexPresence;
 
+// Re-places the floating button when the host's own has moved.
++ (void)hostDidMove;
+
 // Places or removes the floating button according to the current switches.
 + (void)installButton;
 
