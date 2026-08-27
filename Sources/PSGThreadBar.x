@@ -125,6 +125,44 @@ static BOOL PSGManualAllowed(void) {
 
 @end
 
+#pragma mark - Insertion trace
+
+// Why the eye is recreated, measured in one pass rather than one build per
+// hypothesis. Each insertion records which controller asked, which stack it
+// landed in, and what became of the eye inserted before it.
+//
+// A short identifier stands in for each object so the trace reads without
+// pointers. Addresses are only ever compared, never dereferenced, so an
+// identifier survives its object. An address freed and reused would collapse
+// two objects onto one identifier: within a single conversation the
+// controller stays alive throughout, so the reading holds there.
+static NSUInteger PSGIdentifierFor(id object,
+                                   NSMutableDictionary<NSNumber *, NSNumber *> *table) {
+    if (object == nil) return 0;
+    NSNumber *address = @((unsigned long long)(uintptr_t)object);
+    NSNumber *known = table[address];
+    if (known != nil) return known.unsignedIntegerValue;
+    NSUInteger next = table.count + 1;
+    table[address] = @(next);
+    return next;
+}
+
+// The eye inserted last time, held weakly so the trace never keeps a view
+// alive and never reports a dead one as present.
+static __weak UIButton *gPreviousEye = nil;
+
+// detached  the host dropped it, so the stack was rebuilt or emptied
+// other     it is still on screen in a different stack, so the search moved
+// same      it is in the stack being written to, which the tag test should
+//           have caught, so the tag was lost
+static NSString *PSGPreviousEyeState(UIStackView *stack) {
+    UIButton *previous = gPreviousEye;
+    if (previous == nil) return @"none";
+    if (previous.superview == nil) return @"detached";
+    if (previous.superview == stack) return @"same";
+    return @"other";
+}
+
 #pragma mark - Placement
 
 // No tintColor is set: the button inherits the title view's, as the call
@@ -208,15 +246,36 @@ static void PSGSyncEye(UIViewController *host, NSString *pass) {
 
     [PRMDebug noteHook:@"manual receipt"];
 
-    // Counted rather than described: one insertion per conversation means
-    // the stack survives, several mean the host rebuilds it and the eye is
-    // being recreated, which is what a flash looks like.
     static NSUInteger insertions = 0;
+    static NSMutableDictionary<NSNumber *, NSNumber *> *hostIds = nil;
+    static NSMutableDictionary<NSNumber *, NSNumber *> *stackIds = nil;
+    static NSMutableArray<NSString *> *trace = nil;
+    if (trace == nil) {
+        hostIds = [NSMutableDictionary dictionary];
+        stackIds = [NSMutableDictionary dictionary];
+        trace = [NSMutableArray array];
+    }
+
+    // Read before the new eye replaces it.
+    NSString *previous = PSGPreviousEyeState(stack);
+    gPreviousEye = button;
     insertions++;
+
+    [trace addObject:[NSString stringWithFormat:@"h%lu/s%lu/%@/%@",
+                      (unsigned long)PSGIdentifierFor(host, hostIds),
+                      (unsigned long)PSGIdentifierFor(stack, stackIds),
+                      previous, pass]];
+    while (trace.count > 8) [trace removeObjectAtIndex:0];
+
+    // One line carries the whole measurement: how many insertions, how many
+    // distinct controllers and stacks were seen, and the last eight in order.
     [PRMDebug setStatus:[NSString stringWithFormat:
-                         @"joined at %@, %lu buttons, insertion #%lu",
-                         pass, (unsigned long)stack.arrangedSubviews.count,
-                         (unsigned long)insertions]
+                         @"%lu ins | %lu hosts | %lu stacks | %lu buttons | %@",
+                         (unsigned long)insertions,
+                         (unsigned long)hostIds.count,
+                         (unsigned long)stackIds.count,
+                         (unsigned long)stack.arrangedSubviews.count,
+                         [trace componentsJoinedByString:@" "]]
                  forKey:@"thread bar"];
 }
 

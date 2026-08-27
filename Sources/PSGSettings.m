@@ -1,6 +1,7 @@
 #import "PSGSettings.h"
 #import "PRMPrefs.h"
 #import "PRMDebug.h"
+#import "PSGHelp.h"
 
 // Metrics read off the native settings screen.
 static const CGFloat kRowHeight      = 52.0;
@@ -16,6 +17,21 @@ static const CGFloat kHeaderSize     = 15.0;
 static const CGFloat kHeaderHeight   = 42.0;
 static const CGFloat kHeaderFirst    = 30.0;
 static const CGFloat kHeaderBaseline = 8.0;
+
+// The pill keeps one gap from the toggle. The offset used to include the
+// accessory's own width, but contentView already stops before the accessory,
+// so counting it again pushed the pill a full toggle clear of the switch.
+static const CGFloat kPillHeight    = 24.0;
+static const CGFloat kPillMinWidth  = 54.0;
+static const CGFloat kPillTrailing  = 10.0;
+static const CGFloat kPillLabelGap  = 10.0;
+
+// Each group ends with a "?" mirroring the heading across the card, so both
+// sit at the same inset from their own edge.
+static const CGFloat kHelpSize      = 22.0;
+static const CGFloat kHelpGlyphSize = 13.0;
+static const CGFloat kHelpTop       = 8.0;
+static const CGFloat kFooterHeight  = 32.0;
 
 #pragma mark - Row
 
@@ -140,11 +156,13 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 
     if (!self.pill.hidden) {
         [self.pill sizeToFit];
-        CGFloat pillWidth = MAX(self.pill.bounds.size.width, 54.0);
-        CGFloat pillHeight = 24.0;
-        self.pill.frame = CGRectMake(self.contentView.bounds.size.width - right - pillWidth,
-                                     (height - pillHeight) / 2.0, pillWidth, pillHeight);
-        right += pillWidth + 10.0;
+        CGFloat pillWidth = MAX(self.pill.bounds.size.width, kPillMinWidth);
+        self.pill.frame = CGRectMake(
+            self.contentView.bounds.size.width - kPillTrailing - pillWidth,
+            (height - kPillHeight) / 2.0, pillWidth, kPillHeight);
+        // The label stops one gap short of the pill. Taken as the larger of
+        // the two insets so a row without an accessory keeps its own margin.
+        right = MAX(right, kPillTrailing + pillWidth + kPillLabelGap);
     }
 
     CGFloat left = self.glyph.hidden ? kIconLeading : kTextLeading;
@@ -187,6 +205,42 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 
 @end
 
+#pragma mark - Footer
+
+// The group's "?" lives here rather than in the heading: it belongs to the
+// whole card, and the trailing inset mirrors the heading's leading one.
+@interface PSGSettingsFooter : UIView
+@property (nonatomic, strong) UIButton *help;
+@end
+
+@implementation PSGSettingsFooter
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self == nil) return nil;
+
+    _help = [UIButton buttonWithType:UIButtonTypeSystem];
+    _help.titleLabel.font = [UIFont systemFontOfSize:kHelpGlyphSize
+                                              weight:UIFontWeightBold];
+    // The same fill as the pill beside the switches, so both read as the
+    // same kind of control.
+    _help.backgroundColor = [UIColor tertiarySystemFillColor];
+    _help.layer.cornerRadius = kHelpSize / 2.0;
+    _help.accessibilityLabel = @"What these do";
+    [_help setTitle:@"?" forState:UIControlStateNormal];
+    [_help setTitleColor:[UIColor secondaryLabelColor] forState:UIControlStateNormal];
+    [self addSubview:_help];
+    return self;
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    self.help.frame = CGRectMake(self.bounds.size.width - kHeaderLeading - kHelpSize,
+                                 kHelpTop, kHelpSize, kHelpSize);
+}
+
+@end
+
 #pragma mark - Controller
 
 @interface PSGSettingsViewController ()
@@ -194,6 +248,9 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 // The verb lives here rather than at the start of every row. Repeating
 // "Hide" eight times was pushing the longest labels into an ellipsis.
 @property (nonatomic, strong) NSArray<NSString *> *titles;
+// One entry per section, each a list of pairs: a control's own label, then
+// a sentence describing it. Kept beside the rows so the two cannot drift.
+@property (nonatomic, strong) NSArray<NSArray<NSArray<NSString *> *> *> *help;
 @end
 
 @implementation PSGSettingsViewController
@@ -252,48 +309,54 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
     self.tableView.separatorInset = UIEdgeInsetsMake(0.0, kTextLeading, 0.0, 0.0);
     [self.tableView registerClass:[PSGSettingsCell class] forCellReuseIdentifier:@"row"];
 
-    self.titles = @[@"Composer", @"Hide in chats", @"Hide in notifications", @"Hide in stories",
-                    @"Media", @"Calls", @"Hide tabs", @"Appearance", @"Debug", @""];
+    // Grouped by the place the thing appears, not by whether the switch
+    // adds or removes. Four rows used to sit under "Hide in chats" while
+    // their hooks were on the thread list, the search bar and the inbox
+    // rows; they are with the list they act on now.
+    self.titles = @[@"Conversations", @"Chat list", @"Notifications", @"Stories",
+                    @"Media", @"Tab bar", @"Diagnostics", @""];
 
     self.sections = @[
-        @[[PSGSettingsRow switchRow:@"Keep keyboard closed" symbol:@"keyboard.chevron.compact.down"
-                                key:PRMKeyNoAutoKeyboard inverted:NO]],
-
         @[[PSGSettingsRow switchRow:@"Read receipts" symbol:@"eye.fill"
                                 key:PRMKeyReadAnonymously
                              auxKey:PRMKeyReadReceiptsManual
                          auxOnTitle:@"Manual" auxOffTitle:@"Off"],
           [PSGSettingsRow switchRow:@"Typing indicator" symbol:@"ellipsis.bubble.fill"
                                 key:PRMKeyHideTypingIndicator inverted:NO],
+          [PSGSettingsRow switchRow:@"Keep keyboard closed"
+                             symbol:@"keyboard.chevron.compact.down"
+                                key:PRMKeyNoAutoKeyboard inverted:NO],
+          [PSGSettingsRow switchRow:@"Confirm before calling" symbol:@"phone.fill"
+                                key:PRMKeyCallConfirmation inverted:NO]],
+
+        @[[PSGSettingsRow switchRow:@"Stories tray" symbol:@"person.3.fill"
+                                key:PRMKeyHideStoriesTray inverted:NO],
           [PSGSettingsRow switchRow:@"People you may know" symbol:@"person.2.fill"
                                 key:PRMKeyHidePeopleYouMayKnow inverted:NO],
           [PSGSettingsRow switchRow:@"Meta AI in search" symbol:@"magnifyingglass"
                                 key:PRMKeyHideMetaAI inverted:NO],
           [PSGSettingsRow switchRow:@"Meta AI button" symbol:@"sparkles"
-                                key:PRMKeyHideMetaAIButton inverted:NO],
-          [PSGSettingsRow switchRow:@"Stories tray" symbol:@"person.3.fill"
-                                key:PRMKeyHideStoriesTray inverted:NO]],
+                                key:PRMKeyHideMetaAIButton inverted:NO]],
 
-        @[[PSGSettingsRow switchRow:@"Suggestions" symbol:@"bell.fill"
+        @[[PSGSettingsRow switchRow:@"People you may know" symbol:@"bell.fill"
                                 key:PRMKeyHidePymkInNotifications inverted:NO]],
 
-        @[[PSGSettingsRow switchRow:@"Seen receipts" symbol:@"eye.circle.fill"
+        @[[PSGSettingsRow switchRow:@"Story views" symbol:@"eye.circle.fill"
                                 key:PRMKeyStoriesAnonymously inverted:NO],
           [PSGSettingsRow switchRow:@"Reply bar" symbol:@"bubble.left.fill"
                                 key:PRMKeyHideStoryReplyBar inverted:NO],
-          [PSGSettingsRow switchRow:@"Screenshot notice" symbol:@"camera.fill"
+          [PSGSettingsRow switchRow:@"Screenshot alerts" symbol:@"camera.fill"
                                 key:PRMKeyBlockScreenshotNotice inverted:NO]],
 
-        @[[PSGSettingsRow switchRow:@"Allow saving & forwarding"
+        @[[PSGSettingsRow switchRow:@"Saving & forwarding"
                              symbol:@"square.and.arrow.down.fill"
                                 key:PRMKeyUnlockMedia inverted:NO],
           [PSGSettingsRow switchRow:@"Loop videos" symbol:@"repeat"
                                 key:PRMKeyLoopVideos inverted:NO]],
 
-        @[[PSGSettingsRow switchRow:@"Confirm before calling" symbol:@"phone.fill"
-                                key:PRMKeyCallConfirmation inverted:NO]],
-
-        @[[PSGSettingsRow switchRow:@"Chats" symbol:@"message.fill"
+        @[[PSGSettingsRow switchRow:@"Liquid Glass bar" symbol:@"drop.fill"
+                                key:PRMKeyGlassTabBar inverted:NO],
+          [PSGSettingsRow switchRow:@"Chats" symbol:@"message.fill"
                                 key:PRMKeyHideTabChats inverted:NO],
           [PSGSettingsRow switchRow:@"Stories" symbol:@"play.rectangle.fill"
                                 key:PRMKeyHideTabStories inverted:NO],
@@ -302,9 +365,6 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
           [PSGSettingsRow switchRow:@"Menu" symbol:@"line.3.horizontal"
                                 key:PRMKeyHideTabMenu inverted:NO]],
 
-        @[[PSGSettingsRow switchRow:@"Native tab bar" symbol:@"drop.fill"
-                                key:PRMKeyGlassTabBar inverted:NO]],
-
         @[[PSGSettingsRow switchRow:@"Logging" symbol:@"doc.text.fill"
                                 key:PRMKeyDebugEnabled inverted:NO],
           [PSGSettingsRow switchRow:@"Floating access button"
@@ -312,13 +372,85 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
                                 key:PRMKeyFloatingButton inverted:NO],
           [PSGSettingsRow switchRow:@"FLEX explorer" symbol:@"scope"
                                 key:PRMKeyFlexEnabled inverted:NO],
-          [PSGSettingsRow switchRow:@"Suspend all removals" symbol:@"pause.circle.fill"
-                                key:PRMKeyMasterDisable inverted:NO]],
-
-        @[[PSGSettingsRow actionRow:@"Copy everything" action:@selector(copyReport)],
+          [PSGSettingsRow actionRow:@"Copy everything" action:@selector(copyReport)],
           [PSGSettingsRow actionRow:@"Run full scan" action:@selector(runScan)],
           [PSGSettingsRow actionRow:@"Capture in 8 seconds" action:@selector(captureLater)],
           [PSGSettingsRow actionRow:@"Open debug report" action:@selector(openReport)]],
+
+        @[[PSGSettingsRow switchRow:@"Pause PrimeSenger" symbol:@"pause.circle.fill"
+                                key:PRMKeyMasterDisable inverted:NO]],
+    ];
+
+    // Written from the hook each switch drives, not from its label. Kept in
+    // the same order as the rows above.
+    self.help = @[
+        @[@[@"Read receipts",
+            @"Nobody sees when you open a chat. With Manual on, an eye sits in the "
+             "conversation header, and tapping it sends a single receipt by hand."],
+          @[@"Typing indicator",
+            @"Stops the three dots from being sent while you type. You still see theirs."],
+          @[@"Keep keyboard closed",
+            @"The keyboard no longer opens by itself when you enter a chat. Tapping "
+             "the message field still opens it."],
+          @[@"Confirm before calling",
+            @"Asks first when you tap a call button, so a mis-tap in the header does "
+             "not ring anyone."]],
+
+        @[@[@"Stories tray",
+            @"Removes the row of story bubbles from the top of the conversation list."],
+          @[@"People you may know",
+            @"Removes the suggested contacts from the end of the conversation list."],
+          @[@"Meta AI in search",
+            @"The search field reads Search instead of offering Meta AI."],
+          @[@"Meta AI button",
+            @"Removes the floating Meta AI button from the conversation list."]],
+
+        @[@[@"People you may know",
+            @"Removes suggested contacts from the Notifications tab."]],
+
+        @[@[@"Story views",
+            @"Watch a story without appearing in its viewer list."],
+          @[@"Reply bar",
+            @"Removes the reply field from the bottom of a story."],
+          @[@"Screenshot alerts",
+            @"Messenger tells the other person when you capture their story or a "
+             "disappearing photo. This stops that message from being sent."]],
+
+        @[@[@"Saving & forwarding",
+            @"Unlocks saving, copying, sharing and forwarding on photos and videos "
+             "Messenger normally locks."],
+          @[@"Loop videos",
+            @"A video restarts from the beginning instead of stopping at the end."]],
+
+        @[@[@"Liquid Glass bar",
+            @"Places a real iOS tab bar inside Messenger's own, so the bar picks up "
+             "the system's Liquid Glass. Taps are handed back to Messenger, so "
+             "nothing about navigation changes."],
+          @[@"Chats, Stories, Notifications, Menu",
+            @"Each switch removes that tab from the bar. Hiding all four leaves the "
+             "bar empty."]],
+
+        @[@[@"Logging",
+            @"Records what the tweak does into a 4000 line buffer while Messenger "
+             "runs. Leave it off unless you are measuring something."],
+          @[@"Floating access button",
+            @"A round button over Messenger. Tap it to open these settings, hold it "
+             "to open FLEX, drag it to move it."],
+          @[@"FLEX explorer",
+            @"Apple's view inspector. Opened by holding the floating button."],
+          @[@"Copy everything",
+            @"Puts the whole report on the clipboard."],
+          @[@"Run full scan",
+            @"Lists every class the tweak knows about, then copies the report."],
+          @[@"Capture in 8 seconds",
+            @"Closes settings, waits eight seconds, then records the screen you "
+             "ended up on."],
+          @[@"Open debug report",
+            @"Closes settings and shows the report on screen."]],
+
+        @[@[@"Pause PrimeSenger",
+            @"Suspends every removal and every added control at once, without "
+             "touching your switches. Turn it off and they all come back."]],
     ];
 }
 
@@ -353,8 +485,35 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
     return section == 0 ? kHeaderFirst + kHeaderBaseline : kHeaderHeight;
 }
 
+- (NSArray<NSArray<NSString *> *> *)helpForSection:(NSInteger)section {
+    if (section < 0 || section >= (NSInteger)self.help.count) return nil;
+    NSArray<NSArray<NSString *> *> *items = self.help[(NSUInteger)section];
+    return items.count > 0 ? items : nil;
+}
+
 - (CGFloat)tableView:(UITableView *)tableView heightForFooterInSection:(NSInteger)section {
-    return CGFLOAT_MIN;
+    return [self helpForSection:section] != nil ? kFooterHeight : CGFLOAT_MIN;
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForFooterInSection:(NSInteger)section {
+    if ([self helpForSection:section] == nil) return nil;
+    PSGSettingsFooter *footer = [[PSGSettingsFooter alloc] initWithFrame:CGRectZero];
+    footer.help.tag = section;
+    [footer.help addTarget:self
+                    action:@selector(helpTapped:)
+          forControlEvents:UIControlEventTouchUpInside];
+    return footer;
+}
+
+// A group with no heading takes its title from its single entry.
+- (void)helpTapped:(UIButton *)button {
+    NSArray<NSArray<NSString *> *> *items = [self helpForSection:button.tag];
+    if (items == nil) return;
+
+    NSString *title = self.titles[(NSUInteger)button.tag];
+    if (title.length == 0) title = items.firstObject.firstObject;
+
+    [PSGHelpSheet presentFrom:self title:title items:items];
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView

@@ -203,6 +203,9 @@ static void PSGDumpButtons(UIWindow *window) {
 
 - (void)updateRightBarButtonItems {
     %orig;
+    // Counted before the logging gate: how many times the host rebuilds its
+    // bar items per conversation is half of what the eye trace is measuring.
+    [PRMDebug noteHook:@"navbar update"];
     if (![PRMPrefs isEnabled:PRMKeyDebugEnabled]) return;
 
     id controller = PSGSend(self, @selector(delegate));
