@@ -79,6 +79,20 @@ static UIStackView *PSGCallButtonStack(UIView *root, NSInteger depth) {
     return nil;
 }
 
+#pragma mark - State
+
+// The switch decides whether receipts are blocked; the eye is shown for as
+// long as they are. The pill only decides whether a receipt can still be
+// sent by hand, which the glyph reflects.
+static BOOL PSGEyeWanted(void) {
+    return ![PRMPrefs isEnabled:PRMKeyMasterDisable]
+        && [PRMPrefs isEnabled:PRMKeyReadAnonymously];
+}
+
+static BOOL PSGManualAllowed(void) {
+    return [PRMPrefs isEnabled:PRMKeyReadReceiptsManual];
+}
+
 #pragma mark - Target
 
 @interface PSGReceiptEye : NSObject
@@ -88,6 +102,13 @@ static UIStackView *PSGCallButtonStack(UIView *root, NSInteger depth) {
 @implementation PSGReceiptEye
 
 - (void)tapped:(UIButton *)button {
+    if (!PSGManualAllowed()) {
+        UIImpactFeedbackGenerator *refuse = [[UIImpactFeedbackGenerator alloc]
+            initWithStyle:UIImpactFeedbackStyleRigid];
+        [refuse impactOccurred];
+        return;
+    }
+
     UIViewController *list = PSGMessageListIn(self.host, 0);
     BOOL sent = [PSGReadReceipts sendReceiptOn:list];
 
@@ -106,14 +127,25 @@ static UIStackView *PSGCallButtonStack(UIView *root, NSInteger depth) {
 
 #pragma mark - Placement
 
-static BOOL PSGEyeWanted(void) {
-    return ![PRMPrefs isEnabled:PRMKeyMasterDisable]
-        && [PRMPrefs isEnabled:PRMKeyReadAnonymously]
-        && [PRMPrefs isEnabled:PRMKeyReadReceiptsManual];
-}
-
 // No tintColor is set: the button inherits the title view's, as the call
 // buttons beside it do.
+// Struck through when manual sending is off, so the state reads without
+// opening settings.
+static void PSGApplyEyeGlyph(UIButton *button) {
+    BOOL allowed = PSGManualAllowed();
+    UIImageSymbolConfiguration *configuration =
+        [UIImageSymbolConfiguration configurationWithPointSize:kPSGEyeGlyph
+                                                        weight:UIImageSymbolWeightRegular];
+    UIImage *glyph = [UIImage systemImageNamed:allowed ? @"eye.fill" : @"eye.slash.fill"
+                            withConfiguration:configuration];
+    if (glyph != nil) {
+        [button setImage:glyph forState:UIControlStateNormal];
+    } else {
+        [button setTitle:allowed ? @"Seen" : @"—" forState:UIControlStateNormal];
+    }
+    button.alpha = allowed ? 1.0 : 0.45;
+}
+
 static UIButton *PSGMakeEyeButton(PSGReceiptEye *eye) {
     UIImageSymbolConfiguration *configuration =
         [UIImageSymbolConfiguration configurationWithPointSize:kPSGEyeGlyph
@@ -158,7 +190,7 @@ static void PSGSyncEye(UIViewController *host, NSString *pass) {
     }
 
     if (existing != nil) {
-        existing.alpha = 1.0;
+        PSGApplyEyeGlyph(existing);
         return;
     }
 
@@ -169,12 +201,22 @@ static void PSGSyncEye(UIViewController *host, NSString *pass) {
     // Held by the controller: the stack only retains the view.
     objc_setAssociatedObject(host, kPSGEyeTarget, eye, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
+    PSGApplyEyeGlyph(button);
+
     // Index 0 places it before the call buttons.
     [stack insertArrangedSubview:button atIndex:0];
 
     [PRMDebug noteHook:@"manual receipt"];
-    [PRMDebug setStatus:[NSString stringWithFormat:@"joined call stack at %@, %lu buttons",
-                         pass, (unsigned long)stack.arrangedSubviews.count]
+
+    // Counted rather than described: one insertion per conversation means
+    // the stack survives, several mean the host rebuilds it and the eye is
+    // being recreated, which is what a flash looks like.
+    static NSUInteger insertions = 0;
+    insertions++;
+    [PRMDebug setStatus:[NSString stringWithFormat:
+                         @"joined at %@, %lu buttons, insertion #%lu",
+                         pass, (unsigned long)stack.arrangedSubviews.count,
+                         (unsigned long)insertions]
                  forKey:@"thread bar"];
 }
 

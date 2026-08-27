@@ -52,6 +52,9 @@
 // Records whether fleXD is linked in, for the report.
 + (void)reportFlexPresence;
 
+// Glides the floating button back to its slot after a manual move.
++ (void)returnButtonToSlot;
+
 
 // Places or removes the floating button according to the current switches.
 + (void)installButton;

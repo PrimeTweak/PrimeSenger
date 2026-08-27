@@ -35,7 +35,7 @@
     // nothing else asks for a new placement: swiping between tabs used to
     // leave the button in the slot the previous screen gave it. Placed
     // before the suppression filter so it runs for every controller.
-    [PRMDebug refreshFloatingButton];
+    [PRMDebug returnButtonToSlot];
 
     if ([PRMSuppress keyForControllerName:name] == nil) return;
 

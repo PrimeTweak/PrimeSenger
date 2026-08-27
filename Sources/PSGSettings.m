@@ -480,6 +480,8 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
     [row applyDisplayedState:toggle.isOn];
     [self noteRestartIfTabRow:row];
     [PRMDebug refreshFloatingButton];
+    // A switch can change which slot applies, so a moved button returns.
+    [PRMDebug returnButtonToSlot];
     if (row.auxKey != nil) [self.tableView reloadData];
 
     // The explorer lives in its own window above everything, so this sheet

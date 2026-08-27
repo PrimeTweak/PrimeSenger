@@ -64,20 +64,30 @@ static const NSUInteger kTargetCount = sizeof(kTargets) / sizeof(kTargets[0]);
 
 @implementation PRMDebug
 
-// Restores a hand placed position. Read once: the values are only written
-// by dragging.
-+ (void)restoreButtonPlacement {
-    NSUserDefaults *store = NSUserDefaults.standardUserDefaults;
-    if (![store boolForKey:@"psg_button_moved"]) return;
+// A dragged button holds its place until the screen changes, then glides
+// back to its slot. Nothing is stored: the move is meant to be temporary.
++ (void)returnButtonToSlot {
+    if (!gButtonMoved) return;
+    gButtonMoved = NO;
+    gButtonFrame = CGRectZero;
 
-    NSString *stored = [store stringForKey:@"psg_button_frame"];
-    if (stored.length == 0) return;
+    UIButton *button = gButton;
+    UIWindow *window = button.window;
+    if (window == nil) return;
 
-    CGRect frame = CGRectFromString(stored);
-    if (CGRectIsEmpty(frame)) return;
+    CGRect slot = [self slotInWindow:window];
+    if (CGRectEqualToRect(slot, button.frame)) return;
 
-    gButtonMoved = YES;
-    gButtonFrame = frame;
+    [UIView animateWithDuration:0.28
+                          delay:0.0
+         usingSpringWithDamping:0.82
+          initialSpringVelocity:0.0
+                        options:UIViewAnimationOptionBeginFromCurrentState
+                     animations:^{ button.frame = slot; }
+                     completion:nil];
+    [self setStatus:[NSString stringWithFormat:@"returned to slot, y=%.0f",
+                     CGRectGetMinY(slot)]
+             forKey:@"floating button"];
 }
 
 + (void)initialize {
@@ -435,7 +445,6 @@ static const NSUInteger kScanPatternCount =
 }
 
 + (void)arm {
-    [self restoreButtonPlacement];
     NSNotificationCenter *centre = [NSNotificationCenter defaultCenter];
     [centre addObserver:self
                selector:@selector(applicationDidBecomeActive)
@@ -486,6 +495,7 @@ static const NSUInteger kScanPatternCount =
 }
 
 + (void)applicationWillEnterForeground {
+    [self returnButtonToSlot];
 }
 
 + (void)applicationDidBecomeActive {
@@ -667,14 +677,10 @@ static const NSUInteger kScanPatternCount =
     if (view == nil || view.superview == nil) return;
     // A dragged button is not repositioned until the next foreground.
     gButtonMoved = YES;
-    [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"psg_button_moved"];
     CGPoint delta = [pan translationInView:view.superview];
     view.center = CGPointMake(view.center.x + delta.x, view.center.y + delta.y);
     [pan setTranslation:CGPointZero inView:view.superview];
     gButtonFrame = view.frame;
-    // Kept across launches: a button placed by hand stays where it was put.
-    [NSUserDefaults.standardUserDefaults
-        setObject:NSStringFromCGRect(gButtonFrame) forKey:@"psg_button_frame"];
 }
 
 + (void)present {
