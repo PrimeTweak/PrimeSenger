@@ -5,8 +5,9 @@
 // view it renders, the real element type each factory expects, and the
 // colour source. Nothing here changes behaviour.
 //
-// Hooked on updateRightBarButtonItems, measured to fire. Nothing else in
-// this tweak hooks it.
+// Hooked on updateRightBarButtonItems, measured to fire. PSGThreadBar.x
+// hooks the same selector to place the eye; both chain through %orig and
+// neither depends on running first. This one only reads.
 //
 // Signatures taken from the binary:
 //   -[MSGThreadViewNavBarManager updateRightBarButtonItems]        v16@0:8

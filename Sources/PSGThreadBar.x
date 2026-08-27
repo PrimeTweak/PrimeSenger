@@ -23,6 +23,8 @@
 //   -[MSGThreadViewController viewDidLoad]                         v16@0:8
 //   -[MSGThreadViewController viewDidLayoutSubviews]               v16@0:8
 //   -[MSGMessageListViewController _notifyObserversDidSetAsRead:]  v20@0:8B16
+//   -[MSGThreadViewNavBarManager updateRightBarButtonItems]        v16@0:8
+//   -[MSGThreadViewNavBarManager delegate]                         @16@0:8
 
 #import "PRMPrefs.h"
 #import "PRMDebug.h"
@@ -292,6 +294,42 @@ static void PSGSyncEye(UIViewController *host, NSString *pass) {
 - (void)viewDidLayoutSubviews {
     %orig;
     PSGSyncEye((UIViewController *)self, @"layout");
+}
+
+%end
+
+// Measured: the host rebuilds its bar items 25 times across three
+// conversations and the eye was recreated 25 times, one for one. Every
+// rebuild drops it, and putting it back from viewDidLayoutSubviews puts it
+// back a frame later, which is the flash.
+//
+// Placing it from here runs it in the same pass as the rebuild. The layout
+// pass above is kept as a net for anything this does not reach, so the worst
+// case is the behaviour that was already shipping.
+//
+// This selector is hooked in PSGThreadProbe.x as well, which only reads.
+// Both chain through %orig and neither depends on running first.
+%hook MSGThreadViewNavBarManager
+
+- (void)updateRightBarButtonItems {
+    %orig;
+
+    // Inserting an arranged subview lays the bar out again, and the host may
+    // answer that by rebuilding its items. The flag keeps that from becoming
+    // a cycle.
+    static BOOL syncing = NO;
+    if (syncing) return;
+
+    // The owning controller is reached through the delegate rather than a
+    // declared property: the class is not declared here, so the selector is
+    // checked before it is sent.
+    if (![self respondsToSelector:@selector(delegate)]) return;
+    id owner = ((id (*)(id, SEL))objc_msgSend)(self, @selector(delegate));
+    if (![owner isKindOfClass:[UIViewController class]]) return;
+
+    syncing = YES;
+    PSGSyncEye((UIViewController *)owner, @"navbar");
+    syncing = NO;
 }
 
 %end

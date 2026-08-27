@@ -1,9 +1,11 @@
 // Bottom sheet listing what each control in a group does.
 //
-// Only the detents introduced in iOS 15 are used. A detent sized to the
-// sheet's own content needs the resolver added in iOS 16, which is not
-// verified against this build's SDK, so a short group opens at the medium
-// height rather than hugging its text.
+// The sheet stops at the height its own text needs. That detent is resolved
+// by a block, which arrived in iOS 16, so a system older than that falls
+// back to the medium height. The height is measured from the strings rather
+// than from the laid-out views, so it does not depend on when the resolver
+// is called, and the block captures only that number: capturing the
+// controller would tie it to the detent it owns.
 
 #import "PSGHelp.h"
 
@@ -12,10 +14,16 @@ static const CGFloat kItemTitleSize = 15.0;
 static const CGFloat kDetailSize    = 13.5;
 static const CGFloat kSideInset     = 20.0;
 static const CGFloat kItemInset     = 14.0;
-static const CGFloat kTitleInset    = 13.0;
 static const CGFloat kTitleGap      = 3.0;
 static const CGFloat kBottomInset   = 24.0;
 static const CGFloat kCornerRadius  = 12.0;
+
+// The grabber is drawn inside the top of the sheet, so the title starts
+// below it rather than beside it.
+static const CGFloat kTitleTop      = 26.0;
+static const CGFloat kTitleBottom   = 16.0;
+static const CGFloat kCloseSize     = 30.0;
+static const CGFloat kCloseGlyph    = 13.0;
 
 @interface PSGHelpSheet ()
 @property (nonatomic, copy) NSString *sheetTitle;
@@ -35,15 +43,59 @@ static const CGFloat kCornerRadius  = 12.0;
     sheet.sheetTitle = title;
     sheet.items = items;
 
+    CGFloat width = host.view.bounds.size.width;
+    CGFloat wanted = [sheet contentHeightForWidth:width] + host.view.safeAreaInsets.bottom;
+
     UISheetPresentationController *presentation = sheet.sheetPresentationController;
     if (presentation != nil) {
         presentation.prefersGrabberVisible = YES;
         presentation.preferredCornerRadius = kCornerRadius;
-        presentation.detents = @[[UISheetPresentationControllerDetent mediumDetent],
-                                 [UISheetPresentationControllerDetent largeDetent]];
+
+        if (@available(iOS 16.0, *)) {
+            UISheetPresentationControllerDetent *fitted =
+                [UISheetPresentationControllerDetent
+                    customDetentWithIdentifier:@"content"
+                                      resolver:^CGFloat(id<UISheetPresentationControllerDetentResolutionContext> context) {
+                        return MIN(wanted, context.maximumDetentValue);
+                    }];
+            presentation.detents = fitted != nil
+                ? @[fitted]
+                : @[[UISheetPresentationControllerDetent mediumDetent]];
+        } else {
+            presentation.detents = @[[UISheetPresentationControllerDetent mediumDetent],
+                                     [UISheetPresentationControllerDetent largeDetent]];
+        }
     }
 
     [host presentViewController:sheet animated:YES completion:nil];
+}
+
+#pragma mark - Measurement
+
+- (CGFloat)heightOfText:(NSString *)text font:(UIFont *)font width:(CGFloat)width {
+    if (text.length == 0) return 0.0;
+    CGRect box = [text boundingRectWithSize:CGSizeMake(width, CGFLOAT_MAX)
+                                    options:NSStringDrawingUsesLineFragmentOrigin
+                                 attributes:@{NSFontAttributeName: font}
+                                    context:nil];
+    return ceil(CGRectGetHeight(box));
+}
+
+// The same arithmetic the constraints produce, read off the strings.
+- (CGFloat)contentHeightForWidth:(CGFloat)width {
+    CGFloat textWidth = MAX(width - kSideInset * 2.0, 1.0);
+    UIFont *titleFont = [UIFont systemFontOfSize:kItemTitleSize weight:UIFontWeightSemibold];
+    UIFont *detailFont = [UIFont systemFontOfSize:kDetailSize weight:UIFontWeightRegular];
+
+    CGFloat total = kTitleTop + kCloseSize + kTitleBottom;
+    for (NSArray<NSString *> *item in self.items) {
+        total += kItemInset * 2.0 + kTitleGap;
+        total += [self heightOfText:item.firstObject font:titleFont width:textWidth];
+        total += [self heightOfText:(item.count > 1 ? item[1] : @"")
+                               font:detailFont
+                              width:textWidth];
+    }
+    return total + kBottomInset;
 }
 
 #pragma mark - Construction
@@ -107,6 +159,10 @@ static const CGFloat kCornerRadius  = 12.0;
     return entry;
 }
 
+- (void)closeTapped {
+    [self dismissViewControllerAnimated:YES completion:nil];
+}
+
 - (UIView *)titleBar {
     UIView *bar = [[UIView alloc] initWithFrame:CGRectZero];
     bar.translatesAutoresizingMaskIntoConstraints = NO;
@@ -119,16 +175,50 @@ static const CGFloat kCornerRadius  = 12.0;
     label.numberOfLines = 1;
     [bar addSubview:label];
 
+    UIButton *close = [UIButton buttonWithType:UIButtonTypeSystem];
+    close.translatesAutoresizingMaskIntoConstraints = NO;
+    close.backgroundColor = [UIColor tertiarySystemFillColor];
+    close.tintColor = [UIColor labelColor];
+    close.layer.cornerRadius = kCloseSize / 2.0;
+    close.accessibilityLabel = @"Close";
+    UIImageSymbolConfiguration *configuration =
+        [UIImageSymbolConfiguration configurationWithPointSize:kCloseGlyph
+                                                        weight:UIFontWeightSemibold];
+    UIImage *glyph = [UIImage systemImageNamed:@"xmark" withConfiguration:configuration];
+    if (glyph != nil) {
+        [close setImage:glyph forState:UIControlStateNormal];
+    } else {
+        close.titleLabel.font = [UIFont systemFontOfSize:kCloseGlyph
+                                                  weight:UIFontWeightSemibold];
+        [close setTitle:@"X" forState:UIControlStateNormal];
+    }
+    [close addTarget:self
+              action:@selector(closeTapped)
+    forControlEvents:UIControlEventTouchUpInside];
+    [bar addSubview:close];
+
     UIView *hairline = [[UIView alloc] initWithFrame:CGRectZero];
     hairline.translatesAutoresizingMaskIntoConstraints = NO;
     hairline.backgroundColor = [UIColor separatorColor];
     [bar addSubview:hairline];
 
+    // The title keeps the same inset on both sides, so it stays centred on
+    // the sheet rather than on the space the close button leaves.
+    CGFloat reserved = kSideInset + kCloseSize + kTitleGap;
+
     [NSLayoutConstraint activateConstraints:@[
-        [label.topAnchor constraintEqualToAnchor:bar.topAnchor constant:kTitleInset],
-        [label.leadingAnchor constraintEqualToAnchor:bar.leadingAnchor constant:kSideInset],
-        [label.trailingAnchor constraintEqualToAnchor:bar.trailingAnchor constant:-kSideInset],
-        [label.bottomAnchor constraintEqualToAnchor:bar.bottomAnchor constant:-kTitleInset],
+        [close.topAnchor constraintEqualToAnchor:bar.topAnchor constant:kTitleTop],
+        [close.trailingAnchor constraintEqualToAnchor:bar.trailingAnchor
+                                             constant:-kSideInset],
+        [close.widthAnchor constraintEqualToConstant:kCloseSize],
+        [close.heightAnchor constraintEqualToConstant:kCloseSize],
+        [close.bottomAnchor constraintEqualToAnchor:bar.bottomAnchor
+                                           constant:-kTitleBottom],
+
+        [label.centerYAnchor constraintEqualToAnchor:close.centerYAnchor],
+        [label.leadingAnchor constraintEqualToAnchor:bar.leadingAnchor constant:reserved],
+        [label.trailingAnchor constraintEqualToAnchor:bar.trailingAnchor constant:-reserved],
+
         [hairline.leadingAnchor constraintEqualToAnchor:bar.leadingAnchor],
         [hairline.trailingAnchor constraintEqualToAnchor:bar.trailingAnchor],
         [hairline.bottomAnchor constraintEqualToAnchor:bar.bottomAnchor],

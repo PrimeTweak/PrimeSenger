@@ -26,12 +26,11 @@ static const CGFloat kPillMinWidth  = 54.0;
 static const CGFloat kPillTrailing  = 10.0;
 static const CGFloat kPillLabelGap  = 10.0;
 
-// Each group ends with a "?" mirroring the heading across the card, so both
-// sit at the same inset from their own edge.
-static const CGFloat kHelpSize      = 22.0;
-static const CGFloat kHelpGlyphSize = 13.0;
-static const CGFloat kHelpTop       = 8.0;
-static const CGFloat kFooterHeight  = 32.0;
+// The group's info button sits in the heading, at the trailing edge, so it
+// mirrors the title across the card and costs no vertical space.
+static const CGFloat kInfoSize      = 22.0;
+static const CGFloat kInfoGlyphSize = 20.0;
+static const CGFloat kInfoTitleGap  = 8.0;
 
 #pragma mark - Row
 
@@ -177,6 +176,7 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 
 @interface PSGSettingsHeader : UIView
 @property (nonatomic, strong) UILabel *label;
+@property (nonatomic, strong) UIButton *info;
 @end
 
 @implementation PSGSettingsHeader
@@ -189,6 +189,24 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
     // The host uses a darker grey than the system secondary label.
     _label.textColor = [UIColor colorWithRed:0.396 green:0.404 blue:0.420 alpha:1.0];
     [self addSubview:_label];
+
+    _info = [UIButton buttonWithType:UIButtonTypeSystem];
+    _info.tintColor = _label.textColor;
+    _info.accessibilityLabel = @"What these do";
+    _info.hidden = YES;
+    UIImageSymbolConfiguration *configuration =
+        [UIImageSymbolConfiguration configurationWithPointSize:kInfoGlyphSize
+                                                        weight:UIFontWeightRegular];
+    UIImage *glyph = [UIImage systemImageNamed:@"info.circle" withConfiguration:configuration];
+    if (glyph != nil) {
+        [_info setImage:glyph forState:UIControlStateNormal];
+    } else {
+        [PRMDebug log:@"symbol info.circle not available"];
+        _info.titleLabel.font = [UIFont systemFontOfSize:kHeaderSize weight:UIFontWeightBold];
+        [_info setTitle:@"i" forState:UIControlStateNormal];
+        [_info setTitleColor:_label.textColor forState:UIControlStateNormal];
+    }
+    [self addSubview:_info];
     return self;
 }
 
@@ -197,46 +215,18 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGFloat height = ceil(self.label.font.lineHeight);
-    self.label.frame = CGRectMake(kHeaderLeading,
-                                  self.bounds.size.height - height - kHeaderBaseline,
-                                  self.bounds.size.width - kHeaderLeading * 2.0,
+    CGFloat top = self.bounds.size.height - height - kHeaderBaseline;
+    CGFloat reserved = self.info.hidden ? 0.0 : kInfoSize + kInfoTitleGap;
+
+    self.label.frame = CGRectMake(kHeaderLeading, top,
+                                  self.bounds.size.width - kHeaderLeading * 2.0 - reserved,
                                   height);
-}
 
-@end
-
-#pragma mark - Footer
-
-// The group's "?" lives here rather than in the heading: it belongs to the
-// whole card, and the trailing inset mirrors the heading's leading one.
-@interface PSGSettingsFooter : UIView
-@property (nonatomic, strong) UIButton *help;
-@end
-
-@implementation PSGSettingsFooter
-
-- (instancetype)initWithFrame:(CGRect)frame {
-    self = [super initWithFrame:frame];
-    if (self == nil) return nil;
-
-    _help = [UIButton buttonWithType:UIButtonTypeSystem];
-    _help.titleLabel.font = [UIFont systemFontOfSize:kHelpGlyphSize
-                                              weight:UIFontWeightBold];
-    // The same fill as the pill beside the switches, so both read as the
-    // same kind of control.
-    _help.backgroundColor = [UIColor tertiarySystemFillColor];
-    _help.layer.cornerRadius = kHelpSize / 2.0;
-    _help.accessibilityLabel = @"What these do";
-    [_help setTitle:@"?" forState:UIControlStateNormal];
-    [_help setTitleColor:[UIColor secondaryLabelColor] forState:UIControlStateNormal];
-    [self addSubview:_help];
-    return self;
-}
-
-- (void)layoutSubviews {
-    [super layoutSubviews];
-    self.help.frame = CGRectMake(self.bounds.size.width - kHeaderLeading - kHelpSize,
-                                 kHelpTop, kHelpSize, kHelpSize);
+    // Centred on the title rather than on the view, so it holds its place
+    // whatever height the heading is given.
+    self.info.frame = CGRectMake(self.bounds.size.width - kHeaderLeading - kInfoSize,
+                                 top + (height - kInfoSize) / 2.0,
+                                 kInfoSize, kInfoSize);
 }
 
 @end
@@ -354,7 +344,7 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
           [PSGSettingsRow switchRow:@"Loop videos" symbol:@"repeat"
                                 key:PRMKeyLoopVideos inverted:NO]],
 
-        @[[PSGSettingsRow switchRow:@"Liquid Glass bar" symbol:@"drop.fill"
+        @[[PSGSettingsRow switchRow:@"Liquid Glass" symbol:@"drop.fill"
                                 key:PRMKeyGlassTabBar inverted:NO],
           [PSGSettingsRow switchRow:@"Chats" symbol:@"message.fill"
                                 key:PRMKeyHideTabChats inverted:NO],
@@ -422,7 +412,7 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
           @[@"Loop videos",
             @"A video restarts from the beginning instead of stopping at the end."]],
 
-        @[@[@"Liquid Glass bar",
+        @[@[@"Liquid Glass",
             @"Places a real iOS tab bar inside Messenger's own, so the bar picks up "
              "the system's Liquid Glass. Taps are handed back to Messenger, so "
              "nothing about navigation changes."],
@@ -473,15 +463,28 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 // empty views destroys it.
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
     NSString *title = self.titles[(NSUInteger)section];
-    if (title.length == 0) return nil;
+    BOOL explained = [self helpForSection:section] != nil;
+    if (title.length == 0 && !explained) return nil;
+
     PSGSettingsHeader *header = [[PSGSettingsHeader alloc] initWithFrame:CGRectZero];
     header.label.text = title;
+    header.info.hidden = !explained;
+    if (explained) {
+        header.info.tag = section;
+        [header.info addTarget:self
+                        action:@selector(infoTapped:)
+              forControlEvents:UIControlEventTouchUpInside];
+    }
     return header;
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
     NSString *title = self.titles[(NSUInteger)section];
-    if (title.length == 0) return kHeaderFirst;
+    // A group with no heading still needs the full height once it carries an
+    // info button, so the button is not cropped by the shorter spacer.
+    if (title.length == 0) {
+        return [self helpForSection:section] != nil ? kHeaderHeight : kHeaderFirst;
+    }
     return section == 0 ? kHeaderFirst + kHeaderBaseline : kHeaderHeight;
 }
 
@@ -492,21 +495,11 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForFooterInSection:(NSInteger)section {
-    return [self helpForSection:section] != nil ? kFooterHeight : CGFLOAT_MIN;
-}
-
-- (UIView *)tableView:(UITableView *)tableView viewForFooterInSection:(NSInteger)section {
-    if ([self helpForSection:section] == nil) return nil;
-    PSGSettingsFooter *footer = [[PSGSettingsFooter alloc] initWithFrame:CGRectZero];
-    footer.help.tag = section;
-    [footer.help addTarget:self
-                    action:@selector(helpTapped:)
-          forControlEvents:UIControlEventTouchUpInside];
-    return footer;
+    return CGFLOAT_MIN;
 }
 
 // A group with no heading takes its title from its single entry.
-- (void)helpTapped:(UIButton *)button {
+- (void)infoTapped:(UIButton *)button {
     NSArray<NSArray<NSString *> *> *items = [self helpForSection:button.tag];
     if (items == nil) return;
 
