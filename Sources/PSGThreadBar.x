@@ -1,16 +1,23 @@
 // Manual read receipt control.
 //
-// While Read receipts are hidden and manual mode is on, an eye is added to
-// the thread's navigation bar. Tapping it opens the one-shot gate and
-// invokes the receipt on the live message list.
+// While Read receipts are hidden and manual mode is on, an eye is placed
+// beside the call buttons. Tapping it opens the one-shot gate and invokes
+// the receipt on the live message list.
 //
-// The item is added to the controller's navigationItem. It renders at the
-// trailing edge, outside the host's own call buttons, because those are not
-// UIKit bar items: measured, rightBarButtonItems holds one entry, ours.
+// Measured layout of the thread bar:
+//   MDSNavigationBarView            x0   440x44  tint 0.00/0.39/0.82
+//     MSGNavigationThreadViewTitleView x16 364x44 tint 0.69/0.25/0.13
+//       UIStackView                  x305  80x36
+//         LSRTCCallButton            x305  36x36  audio
+//         LSRTCCallButton            x349  36x36  video
+//     UIStackView                    x388  36x44  tint 0.00/0.39/0.82
+//       MSGIconBarButtonItemView            bar items
 //
-// customOtherSendBarButtons: is not the route. Despite returning an empty
-// array it feeds the send bar, not the navigation bar, and putting a
-// UIBarButtonItem in it crashes the thread on open.
+// The call buttons live in a stack inside the title view, not among the bar
+// items, and take their tint from that view. An item added through
+// navigationItem lands in the trailing stack instead, which is why it sat
+// at x388 in the bar's own blue. The eye joins the call button stack, so
+// position and tint both come from the host.
 //
 // Signatures taken from the binary:
 //   -[MSGThreadViewController viewDidLoad]                         v16@0:8
@@ -24,11 +31,14 @@
 #import <objc/message.h>
 
 static const void *kPSGEyeTarget = &kPSGEyeTarget;
-static const void *kPSGEyeItem = &kPSGEyeItem;
+static const NSInteger kPSGEyeTag = 0x50534701;
+
+// Matches the call buttons exactly.
+static const CGFloat kPSGEyeSide = 36.0;
+static const CGFloat kPSGEyeGlyph = 19.0;
 
 #pragma mark - Lookups
 
-// The message list lives as a descendant of the thread controller.
 static UIViewController *PSGMessageListIn(UIViewController *root, NSInteger depth) {
     if (root == nil || depth > 6) return nil;
     if ([NSStringFromClass([root class]) isEqualToString:@"MSGMessageListViewController"]) {
@@ -36,6 +46,34 @@ static UIViewController *PSGMessageListIn(UIViewController *root, NSInteger dept
     }
     for (UIViewController *child in root.childViewControllers) {
         UIViewController *found = PSGMessageListIn(child, depth + 1);
+        if (found != nil) return found;
+    }
+    return nil;
+}
+
+static BOOL PSGOnScreen(UIView *view) {
+    if (view.window == nil) return NO;
+    for (UIView *node = view; node != nil; node = node.superview) {
+        if (node.hidden || node.alpha <= 0.01) return NO;
+    }
+    return YES;
+}
+
+// The stack holding the call buttons. Identified by its contents rather
+// than its position, so it survives a different button set.
+static UIStackView *PSGCallButtonStack(UIView *root, NSInteger depth) {
+    if (root == nil || depth > 16) return nil;
+
+    if ([root isKindOfClass:[UIStackView class]] && PSGOnScreen(root)) {
+        for (UIView *child in ((UIStackView *)root).arrangedSubviews) {
+            if ([NSStringFromClass([child class])
+                 rangeOfString:@"RTCCallButton"].location != NSNotFound) {
+                return (UIStackView *)root;
+            }
+        }
+    }
+    for (UIView *child in root.subviews) {
+        UIStackView *found = PSGCallButtonStack(child, depth + 1);
         if (found != nil) return found;
     }
     return nil;
@@ -49,19 +87,24 @@ static UIViewController *PSGMessageListIn(UIViewController *root, NSInteger dept
 
 @implementation PSGReceiptEye
 
-- (void)tapped:(id)sender {
+- (void)tapped:(UIButton *)button {
     UIViewController *list = PSGMessageListIn(self.host, 0);
     BOOL sent = [PSGReadReceipts sendReceiptOn:list];
 
     UIImpactFeedbackGenerator *haptic = [[UIImpactFeedbackGenerator alloc]
         initWithStyle:sent ? UIImpactFeedbackStyleMedium : UIImpactFeedbackStyleRigid];
     [haptic impactOccurred];
+
+    // Dimmed rather than recoloured, so the inherited tint is kept.
+    if (sent) {
+        [UIView animateWithDuration:0.2 animations:^{ button.alpha = 0.4; }];
+    }
     [PRMDebug noteAction:@"manual receipt"];
 }
 
 @end
 
-#pragma mark - Item
+#pragma mark - Placement
 
 static BOOL PSGEyeWanted(void) {
     return ![PRMPrefs isEnabled:PRMKeyMasterDisable]
@@ -69,70 +112,73 @@ static BOOL PSGEyeWanted(void) {
         && [PRMPrefs isEnabled:PRMKeyReadReceiptsManual];
 }
 
-// A plain image item with no customView and no tintColor: the host wraps
-// and tints the buttons it receives from this factory.
-static UIBarButtonItem *PSGMakeEyeItem(PSGReceiptEye *eye) {
+// No tintColor is set: the button inherits the title view's, as the call
+// buttons beside it do.
+static UIButton *PSGMakeEyeButton(PSGReceiptEye *eye) {
     UIImageSymbolConfiguration *configuration =
-        [UIImageSymbolConfiguration configurationWithPointSize:20.0
+        [UIImageSymbolConfiguration configurationWithPointSize:kPSGEyeGlyph
                                                         weight:UIImageSymbolWeightRegular];
     UIImage *glyph = [UIImage systemImageNamed:@"eye.fill" withConfiguration:configuration];
 
-    UIBarButtonItem *item;
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+    button.tag = kPSGEyeTag;
+    button.accessibilityLabel = @"Mark as seen";
+    button.translatesAutoresizingMaskIntoConstraints = NO;
+    [button.widthAnchor constraintEqualToConstant:kPSGEyeSide].active = YES;
+    [button.heightAnchor constraintEqualToConstant:kPSGEyeSide].active = YES;
+    [button addTarget:eye action:@selector(tapped:)
+     forControlEvents:UIControlEventTouchUpInside];
+
     if (glyph != nil) {
-        item = [[UIBarButtonItem alloc]
-                initWithImage:[glyph imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate]
-                        style:UIBarButtonItemStylePlain
-                       target:eye
-                       action:@selector(tapped:)];
+        [button setImage:glyph forState:UIControlStateNormal];
     } else {
         [PRMDebug log:@"eye.fill unavailable, falling back to text"];
-        item = [[UIBarButtonItem alloc] initWithTitle:@"Seen"
-                                                style:UIBarButtonItemStylePlain
-                                               target:eye
-                                               action:@selector(tapped:)];
+        [button setTitle:@"Seen" forState:UIControlStateNormal];
     }
-    item.accessibilityLabel = @"Mark as seen";
-    return item;
+    return button;
 }
 
 static void PSGSyncEye(UIViewController *host, NSString *pass) {
-    NSMutableArray<UIBarButtonItem *> *items =
-        [NSMutableArray arrayWithArray:host.navigationItem.rightBarButtonItems ?: @[]];
-    UIBarButtonItem *existing = objc_getAssociatedObject(host, kPSGEyeItem);
+    UIView *root = host.viewIfLoaded.window;
+    if (root == nil) return;
+
+    UIStackView *stack = PSGCallButtonStack(root, 0);
+    UIButton *existing = stack ? (UIButton *)[stack viewWithTag:kPSGEyeTag] : nil;
 
     if (!PSGEyeWanted()) {
-        if (existing == nil) return;
-        [items removeObject:existing];
-        host.navigationItem.rightBarButtonItems = items;
-        objc_setAssociatedObject(host, kPSGEyeItem, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [existing removeFromSuperview];
         objc_setAssociatedObject(host, kPSGEyeTarget, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         return;
     }
 
-    if (existing != nil && [items containsObject:existing]) return;
-
-    UIBarButtonItem *item = existing;
-    if (item == nil) {
-        PSGReceiptEye *eye = [[PSGReceiptEye alloc] init];
-        eye.host = host;
-        item = PSGMakeEyeItem(eye);
-        // Held by the controller: the item keeps only a weak target.
-        objc_setAssociatedObject(host, kPSGEyeTarget, eye,
-                                 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (stack == nil) {
+        [PRMDebug setStatus:[NSString stringWithFormat:@"call button stack not found at %@", pass]
+                     forKey:@"thread bar"];
+        return;
     }
 
-    [items addObject:item];
-    host.navigationItem.rightBarButtonItems = items;
-    objc_setAssociatedObject(host, kPSGEyeItem, item, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (existing != nil) {
+        existing.alpha = 1.0;
+        return;
+    }
+
+    PSGReceiptEye *eye = [[PSGReceiptEye alloc] init];
+    eye.host = host;
+    UIButton *button = PSGMakeEyeButton(eye);
+
+    // Held by the controller: the stack only retains the view.
+    objc_setAssociatedObject(host, kPSGEyeTarget, eye, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+    // Index 0 places it before the call buttons.
+    [stack insertArrangedSubview:button atIndex:0];
 
     [PRMDebug noteHook:@"manual receipt"];
-    [PRMDebug setStatus:[NSString stringWithFormat:@"%@ at %@, %lu items",
-                         existing ? @"re-added" : @"added", pass,
-                         (unsigned long)host.navigationItem.rightBarButtonItems.count]
+    [PRMDebug setStatus:[NSString stringWithFormat:@"joined call stack at %@, %lu buttons",
+                         pass, (unsigned long)stack.arrangedSubviews.count]
                  forKey:@"thread bar"];
 }
 
-#pragma mark - Hook
+#pragma mark - Hooks
 
 %hook MSGThreadViewController
 
@@ -141,11 +187,10 @@ static void PSGSyncEye(UIViewController *host, NSString *pass) {
     PSGSyncEye((UIViewController *)self, @"viewDidLoad");
 }
 
+// The title view is built during layout, so the stack only exists here.
 - (void)viewDidLayoutSubviews {
     %orig;
-    UIViewController *host = (UIViewController *)self;
-    if (host.viewIfLoaded.window == nil) return;
-    PSGSyncEye(host, @"layout");
+    PSGSyncEye((UIViewController *)self, @"layout");
 }
 
 %end
