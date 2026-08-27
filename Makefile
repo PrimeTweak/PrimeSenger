@@ -28,8 +28,16 @@ PrimeSenger_CFLAGS = -fobjc-arc -ISources -Wno-deprecated-declarations \
                      $(addprefix -I,$(FLEX_DIRS)) \
                      -Wno-unsupported-availability-guard -Wno-strict-prototypes \
                      -Wno-unused-function -Wno-nullability-completeness \
+                     -Wno-unused-property-ivar \
                      -DPSG_FLEX_SOURCES=$(FLEX_COUNT)
-PrimeSenger_CXXFLAGS = -std=gnu++11
+
+# fleXD builds cleanly under its own settings, which do not use -Werror.
+# Theos does, so any warning in its 182 sources stops the build, and they
+# would surface one at a time. Warnings still appear in the log; they just
+# no longer abort. This applies to this project's own sources too, so the
+# build log is worth reading rather than only its exit code.
+PrimeSenger_CFLAGS += -Wno-error
+PrimeSenger_CXXFLAGS = -std=gnu++11 -Wno-error
 PrimeSenger_FRAMEWORKS = UIKit Foundation CoreGraphics ImageIO QuartzCore \
                          WebKit Security SceneKit QuickLook
 PrimeSenger_LIBRARIES = z sqlite3
