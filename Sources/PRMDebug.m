@@ -21,9 +21,10 @@ static const CGFloat kFloatingEdgeInset = 16.0;
 // Frame set by dragging. Reapplied when the button is rebuilt.
 static CGRect gButtonFrame = {{0.0, 0.0}, {0.0, 0.0}};
 
-// Set once the button has been placed against the host's own floating
-// button. Until then the placement is provisional and the button stays
-// hidden, so it is never seen moving into position.
+// Set once a placement against the host's own floating button has
+// succeeded. It gates the first reveal so the button is never seen moving
+// into position; it does not stop later placements, or the button would
+// keep a stale slot for the rest of the session.
 static BOOL gButtonSettled = NO;
 static dispatch_queue_t gQueue = nil;
 static UIButton *gButton = nil;
@@ -561,6 +562,19 @@ static const NSUInteger kScanPatternCount =
         CGRect metaFrame = [meta convertRect:meta.bounds toView:window];
         BOOL metaVisible = [self viewIsOnScreen:meta];
 
+        // A host button caught mid transition reports a frame that is not
+        // where it will settle. Measuring it then fixes the button in a
+        // slot that is wrong as soon as the screen finishes changing.
+        BOOL plausible = CGRectGetMinY(metaFrame) > 0.0
+                      && CGRectGetMaxY(metaFrame) < window.bounds.size.height;
+        if (!plausible) {
+            [self setStatus:[NSString stringWithFormat:
+                             @"host frame implausible y=%.0f..%.0f, kept previous",
+                             CGRectGetMinY(metaFrame), CGRectGetMaxY(metaFrame)]
+                     forKey:@"floating button"];
+            return;
+        }
+
         // Visible: stack above it. Hidden: take the slot it left.
         CGFloat bottom = metaVisible ? CGRectGetMinY(metaFrame) - kStackGap
                                      : CGRectGetMaxY(metaFrame);
@@ -595,6 +609,9 @@ static const NSUInteger kScanPatternCount =
                               kFloatingSize, kFloatingSize);
     button.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
                               UIViewAutoresizingFlexibleTopMargin;
+    if (button.alpha < 1.0) {
+        [UIView animateWithDuration:0.18 animations:^{ button.alpha = 1.0; }];
+    }
     [self setStatus:[NSString stringWithFormat:
                      @"host button NOT FOUND, fallback y=%.0f, bar %@",
                      button.frame.origin.y, barGone ? @"gone" : @"present"]

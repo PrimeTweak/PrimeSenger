@@ -30,15 +30,16 @@
 - (void)viewWillAppear:(BOOL)animated {
     %orig;
     NSString *name = NSStringFromClass([self class]);
+
+    // Every screen change moves or removes the host's floating button, and
+    // nothing else asks for a new placement: swiping between tabs used to
+    // leave the button in the slot the previous screen gave it. Placed
+    // before the suppression filter so it runs for every controller.
+    [PRMDebug refreshFloatingButton];
+
     if ([PRMSuppress keyForControllerName:name] == nil) return;
 
     [PRMDebug noteHook:@"suppressed controller"];
-
-    // The host's floating button has just been laid out, so this is the
-    // earliest point at which the tweak's own can be placed against it.
-    if ([name rangeOfString:@"MetaAIFAB"].location != NSNotFound) {
-        [PRMDebug refreshFloatingButton];
-    }
 
     UIView *view = self.viewIfLoaded;
     if (view == nil) return;
