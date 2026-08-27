@@ -218,12 +218,17 @@ static void PSGReportBarRegion(UIWindow *window) {
 
 #pragma mark - Hook
 
+// Marks which delivery is running while control stays pinned during
+// development. Bumped every time this file is sent.
+static NSString *const kPSGProbeBuild = @"probe-2";
+
 %hook MSGThreadViewNavBarManager
 
 - (void)updateRightBarButtonItems {
     %orig;
     if (![PRMPrefs isEnabled:PRMKeyDebugEnabled]) return;
 
+    [PRMDebug setStatus:kPSGProbeBuild forKey:@"probe build"];
     PSGReportNavigationItem(self);
 
     // Read after the bar has laid out, so frames and wrappers are final.
