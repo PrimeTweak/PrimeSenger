@@ -49,7 +49,10 @@
 + (BOOL)viewIsOnScreen:(UIView *)view;
 
 // Re-places the floating button after the keyboard has moved.
-+ (void)keyboardFrameChanged;
++ (void)keyboardFrameChanged:(NSNotification *)note;
+
+// Records whether fleXD is linked in, for the report.
++ (void)reportFlexPresence;
 
 // Places or removes the floating button according to the current switches.
 + (void)installButton;

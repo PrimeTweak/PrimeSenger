@@ -26,6 +26,12 @@ static CGRect gButtonFrame = {{0.0, 0.0}, {0.0, 0.0}};
 // into position; it does not stop later placements, or the button would
 // keep a stale slot for the rest of the session.
 static BOOL gButtonSettled = NO;
+
+// The host hides its own floating button while the keyboard is up. Taking
+// the slot it appears to have freed drops this button, and raising it again
+// afterwards is the swing seen on dismissal. Its absence is treated as
+// temporary for as long as the keyboard is showing.
+static BOOL gKeyboardUp = NO;
 static dispatch_queue_t gQueue = nil;
 static UIButton *gButton = nil;
 
@@ -417,17 +423,37 @@ static const NSUInteger kScanPatternCount =
     // where the raised keyboard left it. One notification covers showing,
     // hiding and interactive dismissal; a second catches the final state.
     [centre addObserver:self
-               selector:@selector(keyboardFrameChanged)
+               selector:@selector(keyboardFrameChanged:)
                    name:UIKeyboardWillChangeFrameNotification
                  object:nil];
     [centre addObserver:self
-               selector:@selector(keyboardFrameChanged)
+               selector:@selector(keyboardFrameChanged:)
                    name:UIKeyboardDidHideNotification
                  object:nil];
 }
 
-+ (void)keyboardFrameChanged {
-    [self refreshFloatingButton];
++ (void)keyboardFrameChanged:(NSNotification *)note {
+    CGRect final = [note.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
+    UIScreen *screen = UIScreen.mainScreen;
+
+    // A keyboard on its way out reports a frame at or below the screen edge.
+    BOOL up = CGRectGetMinY(final) < screen.bounds.size.height - 1.0
+           && final.size.height > 0.0;
+
+    if (up == gKeyboardUp) return;
+    gKeyboardUp = up;
+
+    // Nothing is moved while it is up. On the way out the host's own button
+    // returns, and the placement is taken once it has.
+    if (!up) [self refreshFloatingButton];
+}
+
+// Reported whether or not the switch is touched, so one look at the report
+// says if the vendor clone made it into the dylib.
++ (void)reportFlexPresence {
+    [self setStatus:[self flexAvailable] ? @"FLEXManager present, ready"
+                                         : @"FLEXManager ABSENT from the dylib"
+             forKey:@"flex"];
 }
 
 + (void)applicationWillEnterForeground {
@@ -438,6 +464,7 @@ static const NSUInteger kScanPatternCount =
 
 + (void)applicationDidBecomeActive {
     [self reportDesignMode];
+    [self reportFlexPresence];
     // A ladder rather than two fixed delays: each rung retries until the
     // host's floating button can be measured, then stops. Waiting a fixed
     // time made it arrive late; a single early pass placed it wrongly.
@@ -588,6 +615,15 @@ static const NSUInteger kScanPatternCount =
             [self setStatus:[NSString stringWithFormat:
                              @"host frame implausible y=%.0f..%.0f, kept previous",
                              CGRectGetMinY(metaFrame), CGRectGetMaxY(metaFrame)]
+                     forKey:@"floating button"];
+            return;
+        }
+
+        // A host hidden while the keyboard is up is hidden temporarily, so
+        // its slot is not taken: the button would drop, then rise again as
+        // soon as the keyboard left.
+        if (!metaVisible && gKeyboardUp) {
+            [self setStatus:@"host hidden by the keyboard, position kept"
                      forKey:@"floating button"];
             return;
         }

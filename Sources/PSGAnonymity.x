@@ -9,6 +9,7 @@
 #import "PRMPrefs.h"
 #import "PRMDebug.h"
 #import "PSGReadReceipts.h"
+#import <objc/runtime.h>
 
 %hook MSGMessageListViewController
 
@@ -26,6 +27,34 @@
     }
     %orig;
 }
+
+// The host carries its own flag for this, passed to the initialiser as
+// disableReadReceipts: and kept in the _disableReadReceipts ivar. Setting it
+// stops the receipt at the source; suppressing -_notifyObserversDidSetAsRead:
+// only silences local observers, so the receipt still reached the server.
+- (void)viewDidLoad {
+    %orig;
+
+    Ivar flag = class_getInstanceVariable([self class], "_disableReadReceipts");
+    if (flag == NULL) {
+        [PRMDebug setStatus:@"_disableReadReceipts ivar NOT FOUND" forKey:@"read receipts"];
+        return;
+    }
+
+    BOOL wanted = ![PRMPrefs isEnabled:PRMKeyMasterDisable]
+               && [PRMPrefs isEnabled:PRMKeyReadAnonymously];
+
+    ptrdiff_t offset = ivar_getOffset(flag);
+    BOOL *slot = (BOOL *)((__bridge void *)self + offset);
+    BOOL before = *slot;
+    *slot = wanted;
+
+    [PSGReadReceipts setLiveController:wanted ? self : nil];
+    [PRMDebug setStatus:[NSString stringWithFormat:@"_disableReadReceipts %@ -> %@",
+                         before ? @"YES" : @"NO", wanted ? @"YES" : @"NO"]
+                 forKey:@"read receipts"];
+}
+
 
 %end
 

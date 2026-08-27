@@ -1,20 +1,25 @@
-// One-shot gate for read receipts.
+// Read receipts.
 //
-// The Read receipts switch suppresses -[MSGMessageListViewController
-// _notifyObserversDidSetAsRead:]. Manual mode keeps that suppression and
-// opens the gate for exactly one call, raised by the eye in the thread bar.
+// The host keeps its own flag, _disableReadReceipts, set from the thread's
+// initialiser. PSGAnonymity writes it on viewDidLoad, which stops the
+// receipt at the source rather than only silencing local observers.
+//
+// Manual mode lowers that flag for a short window so the host's own read
+// path can run once, then raises it again.
 
 #import <Foundation/Foundation.h>
 
 @interface PSGReadReceipts : NSObject
 
+// The thread currently on screen, or nil. Held weakly.
++ (void)setLiveController:(id)controller;
+
 // YES while a receipt has been asked for by hand. Consumed by the first
-// suppressed call that checks it.
+// suppressed notification that checks it.
 + (BOOL)consumeGate;
 
-// Opens the gate and invokes the receipt on the given message list.
-// Returns NO when the controller cannot take the call, so the caller can
-// report it rather than fail silently.
+// Lowers the host's flag for a moment and nudges its read path. Returns NO
+// when the flag cannot be reached, so the caller can report it.
 + (BOOL)sendReceiptOn:(id)messageList;
 
 @end
