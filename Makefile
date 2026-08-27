@@ -27,3 +27,7 @@ PrimeSenger_FRAMEWORKS = UIKit Foundation CoreGraphics ImageIO QuartzCore \
 PrimeSenger_LIBRARIES = z sqlite3
 
 include $(THEOS_MAKE_PATH)/tweak.mk
+
+# Lets the workflow print what this file actually sees, rather than what it
+# is assumed to see: make print-FLEX_SOURCES
+print-%: ; @echo '$*=$($*)'
