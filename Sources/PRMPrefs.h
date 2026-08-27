@@ -24,6 +24,8 @@ extern NSString *const PRMKeyHideTabMenu;
 extern NSString *const PRMKeyGlassTabBar;
 extern NSString *const PRMKeyFloatingButton;
 extern NSString *const PRMKeyDebugEnabled;
+extern NSString *const PRMKeyFlexEnabled;
+extern NSString *const PRMKeyNoAutoKeyboard;
 
 @interface PRMPrefs : NSObject
 

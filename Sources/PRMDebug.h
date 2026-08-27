@@ -63,6 +63,14 @@
 // Implemented in PRMLauncher.m, which is where the Messenger-specific
 // settings screen is known. Declared on a category so the main
 // implementation is not held responsible for defining them.
+// fleXD, resolved at runtime so a missing clone cannot break the build.
+@interface PRMDebug (PSGFlex)
+
++ (BOOL)flexAvailable;
++ (void)toggleFlex;
+
+@end
+
 @interface PRMDebug (PRMLauncher)
 
 // Opens the tweak's settings. The floating button's tap goes here, so the

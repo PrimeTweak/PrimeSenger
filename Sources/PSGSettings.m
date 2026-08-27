@@ -252,10 +252,13 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
     self.tableView.separatorInset = UIEdgeInsetsMake(0.0, kTextLeading, 0.0, 0.0);
     [self.tableView registerClass:[PSGSettingsCell class] forCellReuseIdentifier:@"row"];
 
-    self.titles = @[@"Hide in chats", @"Hide in notifications", @"Hide in stories",
+    self.titles = @[@"Composer", @"Hide in chats", @"Hide in notifications", @"Hide in stories",
                     @"Media", @"Calls", @"Hide tabs", @"Appearance", @"Debug", @""];
 
     self.sections = @[
+        @[[PSGSettingsRow switchRow:@"Keep keyboard closed" symbol:@"keyboard.chevron.compact.down"
+                                key:PRMKeyNoAutoKeyboard inverted:NO]],
+
         @[[PSGSettingsRow switchRow:@"Read receipts" symbol:@"eye.fill"
                                 key:PRMKeyReadAnonymously
                              auxKey:PRMKeyReadReceiptsManual
@@ -307,6 +310,8 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
           [PSGSettingsRow switchRow:@"Floating access button"
                              symbol:@"circle.grid.cross.fill"
                                 key:PRMKeyFloatingButton inverted:NO],
+          [PSGSettingsRow switchRow:@"FLEX explorer" symbol:@"scope"
+                                key:PRMKeyFlexEnabled inverted:NO],
           [PSGSettingsRow switchRow:@"Suspend all removals" symbol:@"pause.circle.fill"
                                 key:PRMKeyMasterDisable inverted:NO]],
 
@@ -476,6 +481,13 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
     [self noteRestartIfTabRow:row];
     [PRMDebug refreshFloatingButton];
     if (row.auxKey != nil) [self.tableView reloadData];
+
+    // The explorer lives in its own window above everything, so this sheet
+    // is dismissed to leave it visible.
+    if ([row.key isEqualToString:PRMKeyFlexEnabled]) {
+        [PRMDebug toggleFlex];
+        if (toggle.on) [self close];
+    }
 
     BOOL storedNow = [PRMPrefs isEnabled:row.key];
     [PRMDebug log:@"%@ shown %@, stored %@ (%@)",

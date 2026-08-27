@@ -22,6 +22,8 @@ NSString *const PRMKeyHideTabMenu          = @"psg_hide_tab_menu";
 NSString *const PRMKeyGlassTabBar          = @"psg_glass_tab_bar";
 NSString *const PRMKeyFloatingButton       = @"psg_floating_button";
 NSString *const PRMKeyDebugEnabled          = @"psg_debug_enabled";
+NSString *const PRMKeyFlexEnabled          = @"psg_flex_enabled";
+NSString *const PRMKeyNoAutoKeyboard       = @"psg_no_auto_keyboard";
 
 @implementation PRMPrefs
 
@@ -48,7 +50,9 @@ NSString *const PRMKeyDebugEnabled          = @"psg_debug_enabled";
         PRMKeyHideTabMenu,
         PRMKeyGlassTabBar,
         PRMKeyFloatingButton,
-        PRMKeyDebugEnabled
+        PRMKeyDebugEnabled,
+        PRMKeyFlexEnabled,
+        PRMKeyNoAutoKeyboard
     ];
 }
 
