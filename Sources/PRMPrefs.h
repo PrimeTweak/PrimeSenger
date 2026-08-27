@@ -8,6 +8,7 @@ extern NSString *const PRMKeyStoriesAnonymously;
 extern NSString *const PRMKeyHideTypingIndicator;
 extern NSString *const PRMKeyUnlockMedia;
 extern NSString *const PRMKeyLoopVideos;
+extern NSString *const PRMKeyRevealCensored;
 extern NSString *const PRMKeyHideStoryReplyBar;
 extern NSString *const PRMKeyHidePeopleYouMayKnow;
 extern NSString *const PRMKeyCallConfirmation;

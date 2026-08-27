@@ -6,6 +6,7 @@ NSString *const PRMKeyStoriesAnonymously    = @"psg_stories_anonymously";
 NSString *const PRMKeyHideTypingIndicator   = @"psg_hide_typing_indicator";
 NSString *const PRMKeyUnlockMedia           = @"psg_unlock_media";
 NSString *const PRMKeyLoopVideos            = @"psg_loop_videos";
+NSString *const PRMKeyRevealCensored        = @"psg_reveal_censored";
 NSString *const PRMKeyHideStoryReplyBar     = @"psg_hide_story_reply_bar";
 NSString *const PRMKeyHidePeopleYouMayKnow  = @"psg_hide_people_you_may_know";
 NSString *const PRMKeyCallConfirmation      = @"psg_call_confirmation";
@@ -35,6 +36,7 @@ NSString *const PRMKeyNoAutoKeyboard       = @"psg_no_auto_keyboard";
         PRMKeyHideTypingIndicator,
         PRMKeyUnlockMedia,
         PRMKeyLoopVideos,
+        PRMKeyRevealCensored,
         PRMKeyHideStoryReplyBar,
         PRMKeyHidePeopleYouMayKnow,
         PRMKeyCallConfirmation,

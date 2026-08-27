@@ -341,6 +341,9 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
         @[[PSGSettingsRow switchRow:@"Saving & forwarding"
                              symbol:@"square.and.arrow.down.fill"
                                 key:PRMKeyUnlockMedia inverted:NO],
+          [PSGSettingsRow switchRow:@"Censored media"
+                             symbol:@"exclamationmark.triangle.fill"
+                                key:PRMKeyRevealCensored inverted:NO],
           [PSGSettingsRow switchRow:@"Loop videos" symbol:@"repeat"
                                 key:PRMKeyLoopVideos inverted:NO]],
 
@@ -407,8 +410,12 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
              "disappearing photo. This stops that message from being sent."]],
 
         @[@[@"Saving & forwarding",
-            @"Unlocks saving, copying, sharing and forwarding on photos and videos "
-             "Messenger normally locks."],
+            @"Opens every action Messenger refuses on a photo or video: saving, "
+             "copying, sharing, forwarding, replying, editing, Live Text, adding "
+             "to a story or a shared album. Ordinary media already allows most of "
+             "these, so the switch only shows on the ones it blocks."],
+          @[@"Censored media",
+            @"Shows media Messenger covers with a warning, without the tap to reveal."],
           @[@"Loop videos",
             @"A video restarts from the beginning instead of stopping at the end."]],
 
