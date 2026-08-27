@@ -185,7 +185,7 @@ static void PSGApplyNativeBar(UIView *host) {
 - (void)layoutSubviews {
     %orig;
     [PRMDebug noteHook:@"tab bar layout"];
-    [PRMDebug setStatus:@"reached, PSGTabBar 1.0.2" forKey:@"tab bar hook"];
+    [PRMDebug setStatus:@"reached, PSGTabBar 1.0.1" forKey:@"tab bar hook"];
 
     UIView *host = (UIView *)self;
     PSGApplyNativeBar(host);

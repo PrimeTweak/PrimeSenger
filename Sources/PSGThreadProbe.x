@@ -186,35 +186,6 @@ static void PSGReportBarRegion(UIWindow *window) {
 
 // The host exposes a hook-shaped factory for extra bar buttons. What it
 // receives and returns decides whether the eye can join their array.
-%hook MSGThreadViewController
-
-- (id)customOtherSendBarButtons:(id)argument {
-    id result = %orig;
-    if ([PRMPrefs isEnabled:PRMKeyDebugEnabled]) {
-        [PRMDebug setStatus:[NSString stringWithFormat:@"arg %@ -> %@ (%@)",
-                             argument ? NSStringFromClass([argument class]) : @"nil",
-                             result ? NSStringFromClass([result class]) : @"nil",
-                             [result respondsToSelector:@selector(count)]
-                                 ? [NSString stringWithFormat:@"%lu",
-                                    (unsigned long)[result count]]
-                                 : @"-"]
-                     forKey:@"probe 5 customOther"];
-    }
-    return result;
-}
-
-- (id)customLeftBarButton:(id)argument {
-    id result = %orig;
-    if ([PRMPrefs isEnabled:PRMKeyDebugEnabled]) {
-        [PRMDebug setStatus:[NSString stringWithFormat:@"arg %@ -> %@",
-                             argument ? NSStringFromClass([argument class]) : @"nil",
-                             result ? NSStringFromClass([result class]) : @"nil"]
-                     forKey:@"probe 6 customLeft"];
-    }
-    return result;
-}
-
-%end
 
 #pragma mark - Hook
 

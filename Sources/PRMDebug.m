@@ -290,7 +290,7 @@ static const NSUInteger kScanPatternCount =
     __block NSString *result = nil;
     dispatch_sync(gQueue, ^{
         NSMutableArray<NSString *> *lines = [NSMutableArray array];
-        [lines addObject:@"PrimeSenger 1.0.2 — debug"];
+        [lines addObject:@"PrimeSenger 1.0.1 — debug"];
         [lines addObject:[NSString stringWithFormat:@"logging: %@",
                           [PRMPrefs isEnabled:PRMKeyDebugEnabled] ? @"on" : @"off"]];
 
