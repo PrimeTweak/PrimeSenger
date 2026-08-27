@@ -27,11 +27,6 @@ static CGRect gButtonFrame = {{0.0, 0.0}, {0.0, 0.0}};
 // keep a stale slot for the rest of the session.
 static BOOL gButtonSettled = NO;
 
-// The host hides its own floating button while the keyboard is up. Taking
-// the slot it appears to have freed drops this button, and raising it again
-// afterwards is the swing seen on dismissal. Its absence is treated as
-// temporary for as long as the keyboard is showing.
-static BOOL gKeyboardUp = NO;
 static dispatch_queue_t gQueue = nil;
 static UIButton *gButton = nil;
 
@@ -297,7 +292,8 @@ static const NSUInteger kScanPatternCount =
     __block NSString *result = nil;
     dispatch_sync(gQueue, ^{
         NSMutableArray<NSString *> *lines = [NSMutableArray array];
-        [lines addObject:@"PrimeSenger 1.0.1 — debug"];
+        [lines addObject:[NSString stringWithFormat:@"PrimeSenger 1.0.1 — debug | FLEX %@",
+                          [self flexAvailable] ? @"linked" : @"NOT LINKED"]];
         [lines addObject:[NSString stringWithFormat:@"logging: %@",
                           [PRMPrefs isEnabled:PRMKeyDebugEnabled] ? @"on" : @"off"]];
 
@@ -432,20 +428,11 @@ static const NSUInteger kScanPatternCount =
                  object:nil];
 }
 
+// The keyboard hides the host's own button without changing screen, so a
+// placement is asked for once it has finished moving. Whether it is coming
+// or going does not matter: a host out of sight is left alone either way.
 + (void)keyboardFrameChanged:(NSNotification *)note {
-    CGRect final = [note.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
-    UIScreen *screen = UIScreen.mainScreen;
-
-    // A keyboard on its way out reports a frame at or below the screen edge.
-    BOOL up = CGRectGetMinY(final) < screen.bounds.size.height - 1.0
-           && final.size.height > 0.0;
-
-    if (up == gKeyboardUp) return;
-    gKeyboardUp = up;
-
-    // Nothing is moved while it is up. On the way out the host's own button
-    // returns, and the placement is taken once it has.
-    if (!up) [self refreshFloatingButton];
+    [self refreshFloatingButton];
 }
 
 // Reported whether or not the switch is touched, so one look at the report
@@ -619,20 +606,30 @@ static const NSUInteger kScanPatternCount =
             return;
         }
 
-        // A host hidden while the keyboard is up is hidden temporarily, so
-        // its slot is not taken: the button would drop, then rise again as
-        // soon as the keyboard left.
-        if (!metaVisible && gKeyboardUp) {
-            [self setStatus:@"host hidden by the keyboard, position kept"
+        // The host can be out of sight for two unrelated reasons, and they
+        // call for opposite actions. Hidden because the user asked for it
+        // means the slot is free for good. Hidden for any other reason is
+        // a transition, and moving into a slot that is about to be taken
+        // back is what caused the button to drift and overlap.
+        BOOL hostHiddenOnPurpose = [PRMPrefs isEnabled:PRMKeyHideMetaAIButton];
+        if (!metaVisible && !hostHiddenOnPurpose) {
+            [self setStatus:@"host out of sight temporarily, position kept"
                      forKey:@"floating button"];
             return;
         }
 
-        // Visible: stack above it. Hidden: take the slot it left.
         CGFloat bottom = metaVisible ? CGRectGetMinY(metaFrame) - kStackGap
                                      : CGRectGetMaxY(metaFrame);
-        button.frame = CGRectMake(trailing,
-                                  bottom - kFloatingSize, kFloatingSize, kFloatingSize);
+
+        // Nothing is written for a move too small to see. Re-placing on
+        // every screen change otherwise nudged the button a point at a time.
+        CGRect wanted = CGRectMake(trailing, bottom - kFloatingSize,
+                                   kFloatingSize, kFloatingSize);
+        if (gButtonSettled && fabs(CGRectGetMinY(wanted)
+                                   - CGRectGetMinY(button.frame)) < 2.0) {
+            return;
+        }
+        button.frame = wanted;
         button.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
                                   UIViewAutoresizingFlexibleTopMargin;
         gButtonSettled = YES;

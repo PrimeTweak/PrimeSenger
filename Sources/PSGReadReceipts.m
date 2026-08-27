@@ -1,6 +1,7 @@
 #import "PSGReadReceipts.h"
 #import "PRMDebug.h"
 #import <objc/message.h>
+#import <dlfcn.h>
 
 static BOOL gGateOpen = NO;
 static __weak id gLiveController = nil;
@@ -33,22 +34,46 @@ static const NSTimeInterval kWindow = 2.0;
     }
 }
 
+// Measured in the host binary: the mailbox SDK exposes a C entry point that
+// marks a thread read, and posts MCAMailboxSDKDidMarkThreadAsReadNotification
+// when it lands. Lowering the flag alone sends nothing, because nothing in
+// the host asks again once the thread is already on screen.
+typedef void (*PSGMarkReadFunction)(id, id);
+
 + (BOOL)sendReceiptOn:(id)messageList {
     id target = messageList ?: gLiveController;
-
-    // Lowered, so the host may send. The gate lets one suppressed
-    // notification through as well, which keeps the interface in step.
-    if (![self setFlag:NO on:target]) {
-        [PRMDebug setStatus:[NSString stringWithFormat:@"key unreachable on %@",
-                             target ? NSStringFromClass([target class]) : @"nil"]
-                     forKey:@"manual receipt"];
+    if (target == nil) {
+        [PRMDebug setStatus:@"no live thread" forKey:@"manual receipt"];
         return NO;
     }
+
+    // Lowered first: the send path checks it, and the gate lets one
+    // suppressed notification through so the interface follows.
+    BOOL lowered = [self setFlag:NO on:target];
     gGateOpen = YES;
+
+    NSMutableArray<NSString *> *tried = [NSMutableArray array];
+    BOOL sent = NO;
+
+    // The host's own entry point, resolved by name so a rename is reported
+    // rather than crashed on.
+    PSGMarkReadFunction mark = (PSGMarkReadFunction)
+        dlsym(RTLD_DEFAULT, "MCAMailboxSDKMarkAsReadThreadWithThreadIdentifier");
+    id threadKey = nil;
+    @try { threadKey = [target valueForKey:@"threadQueryKey"]; } @catch (NSException *ignored) {}
+
+    if (mark != NULL && threadKey != nil) {
+        mark(threadKey, nil);
+        [tried addObject:@"mailbox SDK"];
+        sent = YES;
+    } else {
+        [tried addObject:mark == NULL ? @"symbol absent" : @"no thread key"];
+    }
 
     SEL notify = @selector(_notifyObserversDidSetAsRead:);
     if ([target respondsToSelector:notify]) {
         ((void (*)(id, SEL, BOOL))objc_msgSend)(target, notify, YES);
+        [tried addObject:@"observers"];
     }
 
     __weak id weakTarget = target;
@@ -58,10 +83,12 @@ static const NSTimeInterval kWindow = 2.0;
         gGateOpen = NO;
     });
 
-    [PRMDebug setStatus:[NSString stringWithFormat:@"flag lowered on %@ for %.0fs",
-                         NSStringFromClass([target class]), kWindow]
+    [PRMDebug setStatus:[NSString stringWithFormat:@"flag %@ | %@ | key %@",
+                         lowered ? @"lowered" : @"UNREACHABLE",
+                         [tried componentsJoinedByString:@", "],
+                         threadKey ? NSStringFromClass([threadKey class]) : @"nil"]
                  forKey:@"manual receipt"];
-    return YES;
+    return sent;
 }
 
 @end
