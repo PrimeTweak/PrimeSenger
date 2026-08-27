@@ -43,19 +43,65 @@ static NSString *PSGPlaybackFlags(id controller) {
 
 #pragma mark - Permission gates
 
-- (BOOL)canSaveMedia             { return PSGUnlockGate(%orig, @"video canSave"); }
-- (BOOL)canShareMedia            { return PSGUnlockGate(%orig, @"video canShare"); }
-- (BOOL)canForwardMedia          { return PSGUnlockGate(%orig, @"video canForward"); }
-- (BOOL)canCopyMedia             { return PSGUnlockGate(%orig, @"video canCopy"); }
-- (BOOL)canEditMedia             { return PSGUnlockGate(%orig, @"video canEdit"); }
-- (BOOL)canReplyMedia            { return PSGUnlockGate(%orig, @"video canReply"); }
-- (BOOL)canGetInfo               { return PSGUnlockGate(%orig, @"video canGetInfo"); }
-- (BOOL)canShowLiveText          { return PSGUnlockGate(%orig, @"video canLiveText"); }
-- (BOOL)canMediaAddToStory       { return PSGUnlockGate(%orig, @"video canAddToStory"); }
-- (BOOL)canMediaAddToSharedAlbum { return PSGUnlockGate(%orig, @"video canAddToAlbum"); }
-- (BOOL)canOpenUnifiedShareSheet { return PSGUnlockGate(%orig, @"video canShareSheet"); }
+- (BOOL)canSaveMedia {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"video canSave");
+}
 
-- (BOOL)isContentCensored        { return PSGCensorGate(%orig, @"video censored"); }
+- (BOOL)canShareMedia {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"video canShare");
+}
+
+- (BOOL)canForwardMedia {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"video canForward");
+}
+
+- (BOOL)canCopyMedia {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"video canCopy");
+}
+
+- (BOOL)canEditMedia {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"video canEdit");
+}
+
+- (BOOL)canReplyMedia {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"video canReply");
+}
+
+- (BOOL)canGetInfo {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"video canGetInfo");
+}
+
+- (BOOL)canShowLiveText {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"video canLiveText");
+}
+
+- (BOOL)canMediaAddToStory {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"video canAddToStory");
+}
+
+- (BOOL)canMediaAddToSharedAlbum {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"video canAddToAlbum");
+}
+
+- (BOOL)canOpenUnifiedShareSheet {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"video canShareSheet");
+}
+
+- (BOOL)isContentCensored {
+    BOOL original = %orig;
+    return PSGCensorGate(original, @"video censored");
+}
 
 #pragma mark - Looping
 

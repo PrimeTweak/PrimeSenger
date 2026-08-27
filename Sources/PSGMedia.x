@@ -45,18 +45,64 @@ BOOL PSGCensorGate(BOOL original, NSString *name) {
 
 %hook LSMediaViewController
 
-- (BOOL)canSaveMedia             { return PSGUnlockGate(%orig, @"canSaveMedia"); }
-- (BOOL)canShareMedia            { return PSGUnlockGate(%orig, @"canShareMedia"); }
-- (BOOL)canForwardMedia          { return PSGUnlockGate(%orig, @"canForwardMedia"); }
-- (BOOL)canCopyMedia             { return PSGUnlockGate(%orig, @"canCopyMedia"); }
-- (BOOL)canEditMedia             { return PSGUnlockGate(%orig, @"canEditMedia"); }
-- (BOOL)canReplyMedia            { return PSGUnlockGate(%orig, @"canReplyMedia"); }
-- (BOOL)canGetInfo               { return PSGUnlockGate(%orig, @"canGetInfo"); }
-- (BOOL)canShowLiveText          { return PSGUnlockGate(%orig, @"canLiveText"); }
-- (BOOL)canMediaAddToStory       { return PSGUnlockGate(%orig, @"canAddToStory"); }
-- (BOOL)canMediaAddToSharedAlbum { return PSGUnlockGate(%orig, @"canAddToAlbum"); }
-- (BOOL)canOpenUnifiedShareSheet { return PSGUnlockGate(%orig, @"canShareSheet"); }
+- (BOOL)canSaveMedia {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"canSaveMedia");
+}
 
-- (BOOL)isContentCensored        { return PSGCensorGate(%orig, @"censored"); }
+- (BOOL)canShareMedia {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"canShareMedia");
+}
+
+- (BOOL)canForwardMedia {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"canForwardMedia");
+}
+
+- (BOOL)canCopyMedia {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"canCopyMedia");
+}
+
+- (BOOL)canEditMedia {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"canEditMedia");
+}
+
+- (BOOL)canReplyMedia {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"canReplyMedia");
+}
+
+- (BOOL)canGetInfo {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"canGetInfo");
+}
+
+- (BOOL)canShowLiveText {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"canLiveText");
+}
+
+- (BOOL)canMediaAddToStory {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"canAddToStory");
+}
+
+- (BOOL)canMediaAddToSharedAlbum {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"canAddToAlbum");
+}
+
+- (BOOL)canOpenUnifiedShareSheet {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"canShareSheet");
+}
+
+- (BOOL)isContentCensored {
+    BOOL original = %orig;
+    return PSGCensorGate(original, @"censored");
+}
 
 %end
