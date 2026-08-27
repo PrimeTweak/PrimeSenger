@@ -25,15 +25,16 @@
                      completion:nil];
 }
 
-// Called on every screen change, so a burst of appearances must not run a
-// window-wide search each time. Requests are coalesced into one placement,
-// and delayed past layout: viewWillAppear runs before the host's own
-// button reaches its final frame.
+// Called on every screen change and every keyboard movement, so a burst of
+// requests must not run a window-wide search each time. They are coalesced
+// into one placement, delayed past both layout and the keyboard animation:
+// viewWillAppear runs before the host's own button reaches its final frame,
+// and the keyboard takes about a quarter of a second to settle.
 + (void)refreshFloatingButton {
     static NSUInteger generation = 0;
     NSUInteger mine = ++generation;
 
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         if (mine != generation) return;
         [self installButton];

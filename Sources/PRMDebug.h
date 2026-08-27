@@ -48,6 +48,9 @@
 // Reports whether a view and all of its ancestors are visible.
 + (BOOL)viewIsOnScreen:(UIView *)view;
 
+// Re-places the floating button after the keyboard has moved.
++ (void)keyboardFrameChanged;
+
 // Places or removes the floating button according to the current switches.
 + (void)installButton;
 

@@ -411,6 +411,23 @@ static const NSUInteger kScanPatternCount =
                selector:@selector(applicationWillEnterForeground)
                    name:UIApplicationWillEnterForegroundNotification
                  object:nil];
+
+    // The keyboard moves the host's floating button without changing
+    // screen, so no appearance callback fires and the placement would stay
+    // where the raised keyboard left it. One notification covers showing,
+    // hiding and interactive dismissal; a second catches the final state.
+    [centre addObserver:self
+               selector:@selector(keyboardFrameChanged)
+                   name:UIKeyboardWillChangeFrameNotification
+                 object:nil];
+    [centre addObserver:self
+               selector:@selector(keyboardFrameChanged)
+                   name:UIKeyboardDidHideNotification
+                 object:nil];
+}
+
++ (void)keyboardFrameChanged {
+    [self refreshFloatingButton];
 }
 
 + (void)applicationWillEnterForeground {
