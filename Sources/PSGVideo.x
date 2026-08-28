@@ -6,7 +6,6 @@
 //   -[LSMediaVideoViewController viewDidAppear:]                     v20@0:8B16
 //   -[LSMediaVideoViewController playDidEnd]                         v16@0:8
 //   -[LSMediaVideoViewController playFromBeginningWhenPossible]      v16@0:8
-//   -[LSMediaVideoViewController mediaVideoControlsViewDidTapPlay:]  v24@0:8@16
 //   -[LSMediaVideoViewController mediaVideoControlsView:didToggleLoop:]  v28@0:8@16B24
 //   ivars _hasPermissionToPlay, _isReadyToPlay, _isPlaying           B
 
@@ -128,10 +127,19 @@ static NSString *PSGPlaybackFlags(id controller) {
     [PRMDebug setStatus:@"armed at appear" forKey:@"video loop"];
 }
 
-// Kept as a second attempt and as the measurement point. The play tap was
-// measured being sent and restarting nothing, so the three playback flags
-// are read around it: at the end of play, after the host's own bookkeeping,
-// and after the tap. Whichever one refuses the restart shows up here.
+// Measured on the end of a video: the flags read 1/1/0 at the end and the
+// original leaves them there. The play tap then took the permission from 1
+// to 0 -- the host still believes playback is running, so the tap pauses
+// rather than restarts, and it was clearing the permission the loop toggle
+// had just been armed with. The tap is gone.
+//
+// playFromBeginningWhenPossible is not put back in its place: it was the
+// first thing tried here and it restarted nothing at those same flags.
+//
+// What is left is the host's own loop, armed at appearance, with nothing
+// interfering. This method now only measures: the flags at the end, after
+// the original, and again shortly after, which is where a working loop
+// would show playing back at 1.
 - (void)playDidEnd {
     [PRMDebug noteHook:@"video playDidEnd"];
 
@@ -140,27 +148,27 @@ static NSString *PSGPlaybackFlags(id controller) {
     %orig;
     NSString *afterOriginal = PSGPlaybackFlags(controller);
 
-    if (![PRMPrefs isEnabled:PRMKeyLoopVideos]) {
-        [PRMDebug setStatus:[NSString stringWithFormat:
-                             @"perm/ready/playing %@ at end, %@ after orig, loop off",
-                             atEnd, afterOriginal]
-                     forKey:@"video state"];
-        return;
-    }
-
-    SEL play = @selector(mediaVideoControlsViewDidTapPlay:);
-    if (![controller respondsToSelector:play]) {
-        [PRMDebug setStatus:@"play tap selector missing" forKey:@"video state"];
-        return;
-    }
-
-    [PRMDebug noteAction:@"video playDidEnd"];
-    ((void (*)(id, SEL, id))objc_msgSend)(controller, play, nil);
-
     [PRMDebug setStatus:[NSString stringWithFormat:
-                         @"perm/ready/playing %@ at end, %@ after orig, %@ after tap",
-                         atEnd, afterOriginal, PSGPlaybackFlags(controller)]
+                         @"perm/ready/playing %@ at end, %@ after orig%@",
+                         atEnd, afterOriginal,
+                         [PRMPrefs isEnabled:PRMKeyLoopVideos] ? @"" : @", loop off"]
                  forKey:@"video state"];
+
+    if (![PRMPrefs isEnabled:PRMKeyLoopVideos]) return;
+    [PRMDebug noteAction:@"video playDidEnd"];
+
+    // Held weakly so the reading never keeps the controller alive and never
+    // reports a dead one. A restart driven by the host lands within a frame
+    // or two, so this is late enough to catch it.
+    __weak id pending = controller;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        id later = pending;
+        [PRMDebug setStatus:(later == nil) ? @"controller gone"
+                          : [NSString stringWithFormat:@"perm/ready/playing %@",
+                             PSGPlaybackFlags(later)]
+                     forKey:@"video after"];
+    });
 }
 
 %end
