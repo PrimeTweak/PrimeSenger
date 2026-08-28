@@ -8,6 +8,9 @@ NSString *const PRMKeyUnlockMedia           = @"psg_unlock_media";
 NSString *const PRMKeyLoopVideos            = @"psg_loop_videos";
 NSString *const PRMKeyRevealCensored        = @"psg_reveal_censored";
 NSString *const PRMKeyViewOnce              = @"psg_view_once";
+NSString *const PRMKeyHideQuickReaction     = @"psg_hide_quick_reaction";
+NSString *const PRMKeyUploadHD              = @"psg_upload_hd";
+NSString *const PRMKeyHoldToSave            = @"psg_hold_to_save";
 NSString *const PRMKeyHideStoryReplyBar     = @"psg_hide_story_reply_bar";
 NSString *const PRMKeyHidePeopleYouMayKnow  = @"psg_hide_people_you_may_know";
 NSString *const PRMKeyCallConfirmation      = @"psg_call_confirmation";
@@ -39,6 +42,9 @@ NSString *const PRMKeyNoAutoKeyboard       = @"psg_no_auto_keyboard";
         PRMKeyLoopVideos,
         PRMKeyRevealCensored,
         PRMKeyViewOnce,
+        PRMKeyHideQuickReaction,
+        PRMKeyUploadHD,
+        PRMKeyHoldToSave,
         PRMKeyHideStoryReplyBar,
         PRMKeyHidePeopleYouMayKnow,
         PRMKeyCallConfirmation,

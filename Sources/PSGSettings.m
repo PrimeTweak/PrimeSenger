@@ -317,7 +317,9 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
                              symbol:@"keyboard.chevron.compact.down"
                                 key:PRMKeyNoAutoKeyboard inverted:NO],
           [PSGSettingsRow switchRow:@"Confirm before calling" symbol:@"phone.fill"
-                                key:PRMKeyCallConfirmation inverted:NO]],
+                                key:PRMKeyCallConfirmation inverted:NO],
+          [PSGSettingsRow switchRow:@"Quick reaction" symbol:@"face.smiling.fill"
+                                key:PRMKeyHideQuickReaction inverted:NO]],
 
         @[[PSGSettingsRow switchRow:@"Stories tray" symbol:@"person.3.fill"
                                 key:PRMKeyHideStoriesTray inverted:NO],
@@ -347,7 +349,11 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
           [PSGSettingsRow switchRow:@"View once media" symbol:@"1.circle.fill"
                                 key:PRMKeyViewOnce inverted:NO],
           [PSGSettingsRow switchRow:@"Loop videos" symbol:@"repeat"
-                                key:PRMKeyLoopVideos inverted:NO]],
+                                key:PRMKeyLoopVideos inverted:NO],
+          [PSGSettingsRow switchRow:@"HD uploads" symbol:@"arrow.up.circle.fill"
+                                key:PRMKeyUploadHD inverted:NO],
+          [PSGSettingsRow switchRow:@"Hold to save" symbol:@"hand.tap.fill"
+                                key:PRMKeyHoldToSave inverted:NO]],
 
         @[[PSGSettingsRow switchRow:@"Liquid Glass" symbol:@"drop.fill"
                                 key:PRMKeyGlassTabBar inverted:NO],
@@ -389,7 +395,10 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
              "the message field still opens it."],
           @[@"Confirm before calling",
             @"Asks first when you tap a call button, so a mis-tap in the header does "
-             "not ring anyone."]],
+             "not ring anyone."],
+          @[@"Quick reaction",
+            @"With the field empty, the composer shows an emoji that sends on a "
+             "single tap. This keeps the send button there instead."]],
 
         @[@[@"Stories tray",
             @"Removes the row of story bubbles from the top of the conversation list."],
@@ -422,7 +431,13 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
             @"A View once photo or video normally burns the first time you open it. "
              "This keeps it from being marked as opened, so it stays there."],
           @[@"Loop videos",
-            @"A video restarts from the beginning instead of stopping at the end."]],
+            @"A video restarts from the beginning instead of stopping at the end."],
+          @[@"HD uploads",
+            @"Turns the HD switch on in the photo picker every time it opens, so "
+             "photos are sent at full quality without setting it by hand."],
+          @[@"Hold to save",
+            @"Hold any picture in the app to write it to your camera roll, "
+             "including thumbnails and avatars that offer no save button."]],
 
         @[@[@"Liquid Glass",
             @"Places a real iOS tab bar inside Messenger's own, so the bar picks up "
