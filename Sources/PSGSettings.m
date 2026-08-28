@@ -307,9 +307,10 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 - (void)buildSections {
     // Grouped by the surface the thing appears on. A label is never repeated
     // across two sections: the suggestions in the chat list and the ones in
-    // push notifications carry different names so a row says which one it is.
+    // the notifications tab carry different names so a row says which one it
+    // is. The section title matches the tab it acts on.
     NSMutableArray<NSString *> *titles = [@[@"Conversations", @"Chat list",
-                                            @"Push notifications", @"Stories",
+                                            @"Notifications", @"Stories",
                                             @"Media", @"Tab bar",
                                             @"Diagnostics"] mutableCopy];
 
