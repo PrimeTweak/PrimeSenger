@@ -19,6 +19,7 @@
 //   -[LSMediaViewController canMediaAddToSharedAlbum]  B16@0:8
 //   -[LSMediaViewController canOpenUnifiedShareSheet]  B16@0:8
 //   -[LSMediaViewController isContentCensored]         B16@0:8
+//   -[LSMediaViewController markViewOnceMessageAsOpened:]  v24@0:8@16
 
 #import "PSGMedia.h"
 #import "PRMPrefs.h"
@@ -103,6 +104,21 @@ BOOL PSGCensorGate(BOOL original, NSString *name) {
 - (BOOL)isContentCensored {
     BOOL original = %orig;
     return PSGCensorGate(original, @"censored");
+}
+
+// A View once photo or video burns when the host marks it as opened, and
+// this is the method that marks it. Swallowing the call leaves the media
+// unmarked, so it stays openable.
+//
+// The original is called on every other path, so the media behaves normally
+// while the switch is off.
+- (void)markViewOnceMessageAsOpened:(id)message {
+    [PRMDebug noteHook:@"view once"];
+    if (![PRMPrefs isEnabled:PRMKeyViewOnce]) {
+        %orig;
+        return;
+    }
+    [PRMDebug noteAction:@"view once"];
 }
 
 %end

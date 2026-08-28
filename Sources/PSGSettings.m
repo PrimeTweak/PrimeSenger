@@ -344,6 +344,8 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
           [PSGSettingsRow switchRow:@"Censored media"
                              symbol:@"exclamationmark.triangle.fill"
                                 key:PRMKeyRevealCensored inverted:NO],
+          [PSGSettingsRow switchRow:@"View once media" symbol:@"1.circle.fill"
+                                key:PRMKeyViewOnce inverted:NO],
           [PSGSettingsRow switchRow:@"Loop videos" symbol:@"repeat"
                                 key:PRMKeyLoopVideos inverted:NO]],
 
@@ -416,6 +418,9 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
              "these, so the switch only shows on the ones it blocks."],
           @[@"Censored media",
             @"Shows media Messenger covers with a warning, without the tap to reveal."],
+          @[@"View once media",
+            @"A View once photo or video normally burns the first time you open it. "
+             "This keeps it from being marked as opened, so it stays there."],
           @[@"Loop videos",
             @"A video restarts from the beginning instead of stopping at the end."]],
 
