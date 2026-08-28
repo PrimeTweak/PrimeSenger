@@ -235,6 +235,7 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 
 @interface PSGSettingsViewController ()
 @property (nonatomic, strong) NSArray<NSArray<PSGSettingsRow *> *> *sections;
+- (void)buildSections;
 // The verb lives here rather than at the start of every row. Repeating
 // "Hide" eight times was pushing the longest labels into an ellipsis.
 @property (nonatomic, strong) NSArray<NSString *> *titles;
@@ -298,28 +299,36 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
     self.tableView.rowHeight = kRowHeight;
     self.tableView.separatorInset = UIEdgeInsetsMake(0.0, kTextLeading, 0.0, 0.0);
     [self.tableView registerClass:[PSGSettingsCell class] forCellReuseIdentifier:@"row"];
+    [self buildSections];
+}
 
-    // Grouped by the place the thing appears, not by whether the switch
-    // adds or removes. Four rows used to sit under "Hide in chats" while
-    // their hooks were on the thread list, the search bar and the inbox
-    // rows; they are with the list they act on now.
-    self.titles = @[@"Conversations", @"Chat list", @"Notifications", @"Stories",
-                    @"Media", @"Tab bar", @"Diagnostics", @""];
+// Rebuilt rather than built once, because the debug actions sit in their own
+// card that only exists while its switch is on.
+- (void)buildSections {
+    // Grouped by the surface the thing appears on. A label is never repeated
+    // across two sections: the suggestions in the chat list and the ones in
+    // push notifications carry different names so a row says which one it is.
+    NSMutableArray<NSString *> *titles = [@[@"Conversations", @"Chat list",
+                                            @"Push notifications", @"Stories",
+                                            @"Media", @"Tab bar",
+                                            @"Diagnostics"] mutableCopy];
 
-    self.sections = @[
+    NSMutableArray *sections = [@[
         @[[PSGSettingsRow switchRow:@"Read receipts" symbol:@"eye.fill"
                                 key:PRMKeyReadAnonymously
                              auxKey:PRMKeyReadReceiptsManual
                          auxOnTitle:@"Manual" auxOffTitle:@"Off"],
           [PSGSettingsRow switchRow:@"Typing indicator" symbol:@"ellipsis.bubble.fill"
                                 key:PRMKeyHideTypingIndicator inverted:NO],
+          [PSGSettingsRow switchRow:@"Quick reaction" symbol:@"face.smiling.fill"
+                                key:PRMKeyHideQuickReaction inverted:NO],
           [PSGSettingsRow switchRow:@"Keep keyboard closed"
                              symbol:@"keyboard.chevron.compact.down"
                                 key:PRMKeyNoAutoKeyboard inverted:NO],
           [PSGSettingsRow switchRow:@"Confirm before calling" symbol:@"phone.fill"
                                 key:PRMKeyCallConfirmation inverted:NO],
-          [PSGSettingsRow switchRow:@"Quick reaction" symbol:@"face.smiling.fill"
-                                key:PRMKeyHideQuickReaction inverted:NO]],
+          [PSGSettingsRow switchRow:@"HD uploads" symbol:@"arrow.up.circle.fill"
+                                key:PRMKeyUploadHD inverted:NO]],
 
         @[[PSGSettingsRow switchRow:@"Stories tray" symbol:@"person.3.fill"
                                 key:PRMKeyHideStoriesTray inverted:NO],
@@ -330,7 +339,7 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
           [PSGSettingsRow switchRow:@"Meta AI button" symbol:@"sparkles"
                                 key:PRMKeyHideMetaAIButton inverted:NO]],
 
-        @[[PSGSettingsRow switchRow:@"People you may know" symbol:@"bell.fill"
+        @[[PSGSettingsRow switchRow:@"Friend suggestions" symbol:@"bell.fill"
                                 key:PRMKeyHidePymkInNotifications inverted:NO]],
 
         @[[PSGSettingsRow switchRow:@"Story views" symbol:@"eye.circle.fill"
@@ -343,21 +352,19 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
         @[[PSGSettingsRow switchRow:@"Saving & forwarding"
                              symbol:@"square.and.arrow.down.fill"
                                 key:PRMKeyUnlockMedia inverted:NO],
+          [PSGSettingsRow switchRow:@"Hold to save" symbol:@"hand.tap.fill"
+                                key:PRMKeyHoldToSave inverted:NO],
           [PSGSettingsRow switchRow:@"Censored media"
                              symbol:@"exclamationmark.triangle.fill"
                                 key:PRMKeyRevealCensored inverted:NO],
           [PSGSettingsRow switchRow:@"View once media" symbol:@"1.circle.fill"
                                 key:PRMKeyViewOnce inverted:NO],
           [PSGSettingsRow switchRow:@"Loop videos" symbol:@"repeat"
-                                key:PRMKeyLoopVideos inverted:NO],
-          [PSGSettingsRow switchRow:@"HD uploads" symbol:@"arrow.up.circle.fill"
-                                key:PRMKeyUploadHD inverted:NO],
-          [PSGSettingsRow switchRow:@"Hold to save" symbol:@"hand.tap.fill"
-                                key:PRMKeyHoldToSave inverted:NO]],
+                                key:PRMKeyLoopVideos inverted:NO]],
 
         @[[PSGSettingsRow switchRow:@"Liquid Glass" symbol:@"drop.fill"
                                 key:PRMKeyGlassTabBar inverted:NO],
-          [PSGSettingsRow switchRow:@"Chats" symbol:@"message.fill"
+          [PSGSettingsRow switchRow:@"Chats" symbol:@"bubble.left.fill"
                                 key:PRMKeyHideTabChats inverted:NO],
           [PSGSettingsRow switchRow:@"Stories" symbol:@"play.rectangle.fill"
                                 key:PRMKeyHideTabStories inverted:NO],
@@ -373,15 +380,114 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
                                 key:PRMKeyFloatingButton inverted:NO],
           [PSGSettingsRow switchRow:@"FLEX explorer" symbol:@"scope"
                                 key:PRMKeyFlexEnabled inverted:NO],
-          [PSGSettingsRow actionRow:@"Copy everything" action:@selector(copyReport)],
-          [PSGSettingsRow actionRow:@"Run full scan" action:@selector(runScan)],
-          [PSGSettingsRow actionRow:@"Capture in 8 seconds" action:@selector(captureLater)],
-          [PSGSettingsRow actionRow:@"Open debug report" action:@selector(openReport)]],
+          [PSGSettingsRow switchRow:@"Debug actions" symbol:@"wrench.fill"
+                                key:PRMKeyDebugActions inverted:NO]],
+    ] mutableCopy];
 
-        @[[PSGSettingsRow switchRow:@"Pause PrimeSenger" symbol:@"pause.circle.fill"
-                                key:PRMKeyMasterDisable inverted:NO]],
-    ];
+    NSMutableArray *help = [@[
+        @[@[@"Read receipts",
+            @"Nobody sees when you open a chat. With Manual on, an eye sits in the "
+             "conversation header, and tapping it sends a single receipt by hand."],
+          @[@"Typing indicator",
+            @"Stops the three dots from being sent while you type. You still see theirs."],
+          @[@"Quick reaction",
+            @"With the field empty, the composer shows an emoji that sends on a "
+             "single tap. This keeps the send button there instead."],
+          @[@"Keep keyboard closed",
+            @"Opening a conversation no longer raises the keyboard. Tapping the "
+             "composer still does."],
+          @[@"Confirm before calling",
+            @"Asks first when you tap a call button, so a mis-tap in the header does "
+             "not ring anyone."],
+          @[@"HD uploads",
+            @"Turns the HD switch on in the photo picker every time it opens, so "
+             "photos are sent at full quality without setting it by hand."]],
 
+        @[@[@"Stories tray",
+            @"Removes the row of story circles above your conversations."],
+          @[@"People you may know",
+            @"Removes the contact suggestions Messenger inserts into the chat list."],
+          @[@"Meta AI in search",
+            @"The search field asks to search, and stops offering Meta AI."],
+          @[@"Meta AI button",
+            @"Removes the round Meta AI button floating over the chat list."]],
+
+        @[@[@"Friend suggestions",
+            @"Removes the same contact suggestions where they appear in the "
+             "notifications tab."]],
+
+        @[@[@"Story views",
+            @"You can watch a story without the sender being told."],
+          @[@"Reply bar",
+            @"Removes the reply field at the bottom of a story."],
+          @[@"Screenshot alerts",
+            @"The sender is not told when you screenshot a disappearing photo."]],
+
+        @[@[@"Saving & forwarding",
+            @"Opens every action Messenger refuses on a photo or video: saving, "
+             "copying, sharing, forwarding, replying, editing, Live Text, adding to "
+             "a story or a shared album."],
+          @[@"Hold to save",
+            @"Hold any picture in the app to write it to your camera roll, "
+             "including thumbnails and avatars that offer no save button."],
+          @[@"Censored media",
+            @"Shows media Messenger covers with a warning, without the tap to reveal."],
+          @[@"View once media",
+            @"A View once photo or video normally burns the first time you open it. "
+             "This keeps it from being marked as opened, so it stays there."],
+          @[@"Loop videos",
+            @"A video restarts from the beginning instead of stopping at the end."]],
+
+        @[@[@"Liquid Glass",
+            @"Replaces Messenger's own tab bar with the system one, which carries "
+             "the glass material."],
+          @[@"Chats",
+            @"Removes the Chats tab from the bar."],
+          @[@"Stories",
+            @"Removes the Stories tab from the bar."],
+          @[@"Notifications",
+            @"Removes the Notifications tab from the bar."],
+          @[@"Menu",
+            @"Removes the Menu tab from the bar."]],
+
+        @[@[@"Logging",
+            @"Records what the tweak does into a 4000 line buffer while Messenger "
+             "runs. Leave it off unless you are measuring something."],
+          @[@"Floating access button",
+            @"A round button over Messenger. Tap it to open these settings, hold it "
+             "to open FLEX, drag it to move it."],
+          @[@"FLEX explorer",
+            @"Apple's view inspector. Opened by holding the floating button."],
+          @[@"Debug actions",
+            @"Reveals the report and measurement buttons below. They stay out of "
+             "the way while this is off."]],
+    ] mutableCopy];
+
+    // The actions are a card of their own, untitled, so it reads as a group
+    // belonging to the switch that revealed it rather than a new section.
+    if ([PRMPrefs isEnabled:PRMKeyDebugActions]) {
+        [titles addObject:@""];
+        [sections addObject:@[
+            [PSGSettingsRow actionRow:@"Open report" action:@selector(openReport)],
+            [PSGSettingsRow actionRow:@"Copy report" action:@selector(copyReport)],
+            [PSGSettingsRow actionRow:@"Scan classes" action:@selector(runScan)],
+            [PSGSettingsRow actionRow:@"Capture views in 8 s"
+                                        action:@selector(captureLater)]]];
+        [help addObject:@[]];
+    }
+
+    [titles addObject:@"Master"];
+    [sections addObject:@[
+        [PSGSettingsRow switchRow:@"Pause PrimeSenger" symbol:@"pause.circle.fill"
+                              key:PRMKeyMasterDisable inverted:NO]]];
+    [help addObject:@[
+        @[@"Pause PrimeSenger",
+          @"Suspends every removal and every added control at once, without "
+           "touching your switches. Turn it off and they all come back."]]];
+
+    self.titles = titles;
+    self.sections = sections;
+    self.help = help;
     // Written from the hook each switch drives, not from its label. Kept in
     // the same order as the rows above.
     self.help = @[
@@ -662,6 +768,13 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
     // A switch can change which slot applies, so a moved button returns.
     [PRMDebug returnButtonToSlot];
     if (row.auxKey != nil) [self.tableView reloadData];
+
+    // The actions card is built from this switch, so the table is rebuilt
+    // rather than reloaded when it moves.
+    if ([row.key isEqualToString:PRMKeyDebugActions]) {
+        [self buildSections];
+        [self.tableView reloadData];
+    }
 
     // The explorer lives in its own window above everything, so this sheet
     // is dismissed to leave it visible.

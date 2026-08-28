@@ -13,6 +13,7 @@ extern NSString *const PRMKeyViewOnce;
 extern NSString *const PRMKeyHideQuickReaction;
 extern NSString *const PRMKeyUploadHD;
 extern NSString *const PRMKeyHoldToSave;
+extern NSString *const PRMKeyDebugActions;
 extern NSString *const PRMKeyHideStoryReplyBar;
 extern NSString *const PRMKeyHidePeopleYouMayKnow;
 extern NSString *const PRMKeyCallConfirmation;
