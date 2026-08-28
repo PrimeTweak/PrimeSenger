@@ -113,7 +113,15 @@ BOOL PSGCensorGate(BOOL original, NSString *name) {
 // The original is called on every other path, so the media behaves normally
 // while the switch is off.
 - (void)markViewOnceMessageAsOpened:(id)message {
+    // Counted before the switch is read, so a zero here means the host never
+    // called the method rather than the switch being off. Whether the
+    // selector exists at all on this build is reported separately, at load,
+    // by the presence report in PSGAudit.x.
     [PRMDebug noteHook:@"view once"];
+    [PRMDebug setStatus:[NSString stringWithFormat:@"called, arg=%@",
+                         message ? NSStringFromClass([message class]) : @"nil"]
+                 forKey:@"view once"];
+
     if (![PRMPrefs isEnabled:PRMKeyViewOnce]) {
         %orig;
         return;

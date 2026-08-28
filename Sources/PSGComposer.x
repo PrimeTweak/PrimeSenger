@@ -44,54 +44,18 @@ static BOOL PSGSuppressAutoKeyboard(void) {
 
 #pragma mark - Quick reaction
 
-// With the text field empty, the composer swaps the send button for an emoji
-// that fires on a single tap. The host builds that button itself and decides
-// which shape to use from the flag it is handed:
-//
-//   -[LSComposerViewController _actionButtonWithTextTyped:]  @20@0:8B16
-//
-// Telling it text was typed makes it build the send button in every case.
-// Nothing is hidden by force and no geometry is touched: the host lays out
-// whatever it built.
+// The forcing is removed for this build. Passing YES here was measured
+// firing six times out of six while the emoji stayed on screen, which
+// settles that this method builds a button rather than choosing the shown
+// one. It is kept as a counter so the call rate stays visible next to the
+// composer action readings, which are taken in PSGAudit.x.
 
 %hook LSComposerViewController
 
 - (id)_actionButtonWithTextTyped:(BOOL)textTyped {
     [PRMDebug noteHook:@"quick reaction"];
-    if (![PRMPrefs isEnabled:PRMKeyHideQuickReaction]) return %orig;
-
-    [PRMDebug noteAction:@"quick reaction"];
-    id button = %orig(YES);
-    return button;
-}
-
-%end
-
-#pragma mark - Composer action probe
-
-// LSComposerActionView holds both buttons and shows one, chosen by an
-// integer. setAction: is a two instruction forward into this method, so
-// every change passes here.
-//
-//   -[LSComposerActionView setAction:animated:]  v28@0:8q16B24
-//   ivar _action : q
-//
-// The values are not named anywhere in the binary. This records them in
-// order, so one reading says which integer means send and which means emoji.
-
-%hook LSComposerActionView
-
-- (void)setAction:(NSInteger)action animated:(BOOL)animated {
-    %orig;
-    [PRMDebug noteHook:@"composer action"];
-
-    static NSMutableArray<NSString *> *trace = nil;
-    if (trace == nil) trace = [NSMutableArray array];
-
-    [trace addObject:[NSString stringWithFormat:@"%ld%@", (long)action, animated ? @"a" : @""]];
-    while (trace.count > 12) [trace removeObjectAtIndex:0];
-
-    [PRMDebug setStatus:[trace componentsJoinedByString:@" "] forKey:@"composer action"];
+    if ([PRMPrefs isEnabled:PRMKeyHideQuickReaction]) [PRMDebug noteAction:@"quick reaction"];
+    return %orig;
 }
 
 %end
