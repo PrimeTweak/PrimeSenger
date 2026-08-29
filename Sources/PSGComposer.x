@@ -47,63 +47,28 @@ static BOOL PSGSuppressAutoKeyboard(void) {
 #pragma mark - Quick reaction
 
 // With the field empty the composer shows an emoji that sends on one tap.
-// Measured on LSComposerActionView, which holds both buttons at once:
-//
-//   [1 ivar1 send:hidden 44x44 off other:44x40 title=..]  field empty
-//
-// The action value stays at 1 in every sample, so the integer is not what
-// decides. What moves is the send button itself: hidden, disabled and sized
-// to zero while the emoji stays visible.
 //
 //   -[LSComposerActionView setAction:animated:]  v28@0:8q16B24
 //   ivar _sendButton : UIButton
 //
-// Writing the properties back after the host wrote them produced a fight:
-// the button flashed on while text was typed and went away again on every
-// layout pass. The host is not undone after the fact any more. Its own send
-// button is given a subclass that refuses to be hidden, disabled or sized to
-// nothing, so the host's writes land on a receiver that ignores them.
+// Two ways of revealing the host's own send button were measured and both
+// failed. Writing hidden, enabled and frame back after the host produced a
+// flash, since the host wrote again on the next pass. Giving the button a
+// subclass that refuses those writes was bypassed outright: the swap lands,
+// the status reads pinned, and the view tree still shows the button at 0x0
+// and hidden, because the flag is backed by the layer and the host reaches
+// it another way.
+//
+// So the host is no longer fought. The button it shows and sizes while the
+// field is empty is the emoji, and that is the one dressed as a send button:
+// it takes the send button's image and its target, and loses its title. The
+// real send button is left untouched, and the host still brings it up by
+// itself once text is typed.
 
-@interface PSGPersistentSendButton : UIButton
-@end
-
-@implementation PSGPersistentSendButton
-
-- (void)setHidden:(BOOL)hidden {
-    [super setHidden:NO];
-}
-
-- (void)setEnabled:(BOOL)enabled {
-    [super setEnabled:YES];
-}
-
-// The button is a sibling of the stack rather than one of its arranged
-// children, so the host collapses it to zero instead of laying it out. An
-// empty rect is replaced by the parent's, which keeps it the size of the
-// slot it sits in whatever that slot becomes.
-- (void)setFrame:(CGRect)frame {
-    if (CGRectIsEmpty(frame)) {
-        UIView *parent = self.superview;
-        if (parent != nil && !CGRectIsEmpty(parent.bounds)) frame = parent.bounds;
-    }
-    [super setFrame:frame];
-}
-
-@end
-
-static void PSGShowSendButton(UIView *view) {
+static void PSGDressEmojiAsSend(UIView *view) {
     Ivar slot = class_getInstanceVariable(object_getClass(view), "_sendButton");
     UIButton *send = slot ? object_getIvar(view, slot) : nil;
     if (![send isKindOfClass:[UIButton class]]) return;
-
-    // Swapped once, and only when the button is still the plain class it was
-    // measured as. Anything else is left alone rather than guessed at.
-    if (object_getClass(send) == [UIButton class]) {
-        object_setClass(send, [PSGPersistentSendButton class]);
-        send.hidden = NO;
-        send.enabled = YES;
-        if (CGRectIsEmpty(send.frame)) send.frame = view.bounds;
-    }
 
     // The emoji is an arranged child of the stack rather than an ivar, so it
     // is found by being a button that is not the send button.
@@ -114,13 +79,41 @@ static void PSGShowSendButton(UIView *view) {
             if ([leaf isKindOfClass:[UIButton class]] && leaf != send) emoji = (UIButton *)leaf;
         }
     }
-    if (emoji != nil && !emoji.isHidden) emoji.hidden = YES;
+    if (emoji == nil) {
+        [PRMDebug setStatus:@"emoji absent" forKey:@"quick reaction"];
+        return;
+    }
 
-    [PRMDebug setStatus:[NSString stringWithFormat:@"send %.0fx%.0f%@ %@ | emoji %@",
-                         send.frame.size.width, send.frame.size.height,
-                         send.isHidden ? @" hidden" : @"",
-                         object_getClass(send) == [PSGPersistentSendButton class] ? @"pinned" : @"PLAIN",
-                         emoji == nil ? @"absent" : (emoji.isHidden ? @"hidden" : @"VISIBLE")]
+    UIImage *glyph = [send imageForState:UIControlStateNormal];
+    NSString *title = [emoji titleForState:UIControlStateNormal];
+
+    // Written only where it differs, so a layout pass that changes nothing
+    // cannot start another one.
+    if (title.length > 0) [emoji setTitle:@"" forState:UIControlStateNormal];
+    if (glyph != nil && [emoji imageForState:UIControlStateNormal] != glyph) {
+        [emoji setImage:glyph forState:UIControlStateNormal];
+    }
+
+    // The tap is routed to whatever the host wired the send button to, so
+    // nothing is invented and the send path stays the host's own.
+    NSArray<NSString *> *actions =
+        [send actionsForTarget:send.allTargets.anyObject
+               forControlEvent:UIControlEventTouchUpInside];
+    id target = send.allTargets.anyObject;
+    if (target != nil && actions.count > 0) {
+        SEL action = NSSelectorFromString(actions.firstObject);
+        if (![[emoji actionsForTarget:target forControlEvent:UIControlEventTouchUpInside]
+                containsObject:actions.firstObject]) {
+            [emoji removeTarget:nil action:NULL forControlEvents:UIControlEventTouchUpInside];
+            [emoji addTarget:target action:action forControlEvents:UIControlEventTouchUpInside];
+        }
+    }
+
+    [PRMDebug setStatus:[NSString stringWithFormat:@"emoji %.0fx%.0f%@ | glyph %@ | target %@",
+                         emoji.frame.size.width, emoji.frame.size.height,
+                         emoji.isHidden ? @" hidden" : @"",
+                         glyph ? @"copied" : @"MISSING",
+                         target ? NSStringFromClass([target class]) : @"none"]
                  forKey:@"quick reaction"];
 }
 
@@ -131,7 +124,7 @@ static void PSGShowSendButton(UIView *view) {
     [PRMDebug noteHook:@"quick reaction"];
     if (![PRMPrefs isEnabled:PRMKeyHideQuickReaction]) return;
     [PRMDebug noteAction:@"quick reaction"];
-    PSGShowSendButton((UIView *)self);
+    PSGDressEmojiAsSend((UIView *)self);
 }
 
 // The class does not implement this itself, so the original resolves to the
@@ -140,7 +133,8 @@ static void PSGShowSendButton(UIView *view) {
     %orig;
     if (![PRMPrefs isEnabled:PRMKeyHideQuickReaction]) return;
     [PRMDebug noteHook:@"quick reaction layout"];
-    PSGShowSendButton((UIView *)self);
+    [PRMDebug noteAction:@"quick reaction layout"];
+    PSGDressEmojiAsSend((UIView *)self);
 }
 
 %end
