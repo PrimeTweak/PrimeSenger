@@ -1,34 +1,30 @@
 // Saving media the app offers no button for.
 //
-// Two separate routes, because one cannot reach what the other does.
+// The long press route is gone. Reproduced from MSGPlusX's binary to the
+// letter, without the duplicate check, the userInteractionEnabled write or
+// the delegate an earlier attempt here added, it installed 204 recognisers
+// in one session and fired zero times: the "hold gesture" key writes on
+// every state transition, a failure included, and it never appeared. The
+// touch does not reach those views on this build, so their feature cannot
+// work here either. It also cost one recogniser per layout pass, none of
+// them released.
 //
-// Route 1, the long press on LSNetworkImageView. Reproduced from MSGPlusX's
-// own build, read out of their binary:
+// What replaced it is the route that measured working on the first try: a
+// button placed on the screen that already shows the image.
 //
-//   %orig
-//   if (!boolForKey) return;
-//   g = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:...];
-//   [g setNumberOfTouchesRequired:1];
-//   [g setMinimumPressDuration:...];
-//   [self addGestureRecognizer:g];
+//   profile save   ran 2  acted 2   button added
+//   save media     saved
 //
-// Three things they do not do, and an earlier attempt here did: no check for
-// an already installed recogniser, no write to userInteractionEnabled, no
-// delegate. That attempt installed 11 times and never fired once, so their
-// form is taken literally instead. The recogniser count is reported, since
-// without a check the view accumulates one per layout pass.
+// Both screens are found by name rather than hooked directly, the way
+// PSGScreens.x matches the Meta AI controller, since one of them is a Swift
+// class whose mangled runtime name would have to be reconstructed by hand.
 //
-// Route 2, the profile picture viewer. Measured in the view tree:
+//   LSProfilePictureViewController          the profile picture viewer
+//   MSGMessageLongPressOverlayViewController  the preview behind the menu
 //
-//   === screen appeared: LSProfilePictureViewController ===
-//     UIVisualEffectView
-//     UIImageView (70,328 300x300)
-//     MDSIconButton (16,78 44x44)  a11y="Close"
-//
-// A plain UIImageView, not an LSNetworkImageView, so route 1 can never see
-// it. MSGPlusX cannot save a profile picture either. The controller is a
-// Swift class, matched by name the way PSGScreens.x matches the Meta AI
-// button rather than hooked directly.
+// The image is looked up rather than assumed: any view answering -image
+// with a UIImage counts, which covers both the plain UIImageView of the
+// profile viewer and the LSNetworkImageView measured inside the overlay.
 
 #import "PRMPrefs.h"
 #import "PRMDebug.h"
@@ -36,6 +32,30 @@
 #import <objc/message.h>
 
 static const NSInteger kPSGSaveButtonTag = 0x50534753;
+
+// Any view answering -image with a UIImage, largest first, so the picture
+// wins over an avatar or an icon sharing the same screen.
+static UIView *PSGImageBearingView(UIView *root, UIImage **out) {
+    UIView *best = nil;
+    UIImage *bestImage = nil;
+    CGFloat bestArea = 0;
+    NSMutableArray<UIView *> *queue = [@[root] mutableCopy];
+    while (queue.count > 0) {
+        UIView *node = queue.firstObject;
+        [queue removeObjectAtIndex:0];
+        [queue addObjectsFromArray:node.subviews];
+        if (![node respondsToSelector:@selector(image)]) continue;
+        id found = ((id (*)(id, SEL))objc_msgSend)(node, @selector(image));
+        if (![found isKindOfClass:[UIImage class]]) continue;
+        CGSize size = node.bounds.size;
+        // Small squares are avatars and glyphs, not the subject of the screen.
+        if (size.width < 80 || size.height < 80) continue;
+        CGFloat area = size.width * size.height;
+        if (area > bestArea) { bestArea = area; best = node; bestImage = found; }
+    }
+    if (out != NULL) *out = bestImage;
+    return best;
+}
 
 @interface PSGMediaSaver : NSObject
 + (instancetype)shared;
@@ -71,72 +91,23 @@ static const NSInteger kPSGSaveButtonTag = 0x50534753;
                  forKey:@"save media"];
 }
 
-// Route 1 target.
-- (void)handleHold:(UIGestureRecognizer *)recognizer {
-    static NSMutableArray<NSString *> *trace = nil;
-    if (trace == nil) trace = [NSMutableArray array];
-    static const char *const names[] = {"possible","began","changed","ended","cancelled","failed"};
-    NSInteger state = recognizer.state;
-    [trace addObject:(state >= 0 && state < 6) ? @(names[state]) : @"?"];
-    while (trace.count > 8) [trace removeObjectAtIndex:0];
-    [PRMDebug setStatus:[trace componentsJoinedByString:@" "] forKey:@"hold gesture"];
-
-    if (state != UIGestureRecognizerStateBegan) return;
-    [PRMDebug noteAction:@"hold fired"];
-
-    id view = recognizer.view;
-    if (![view respondsToSelector:@selector(image)]) return;
-    [self write:((id (*)(id, SEL))objc_msgSend)(view, @selector(image)) from:@"hold"];
-}
-
-// Route 2 target. The button carries the image view it was built beside.
 - (void)saveTapped:(UIButton *)sender {
     UIView *root = sender.superview;
-    UIImageView *best = nil;
-    CGFloat area = 0;
-    NSMutableArray<UIView *> *queue = [@[root] mutableCopy];
-    while (queue.count > 0) {
-        UIView *node = queue.firstObject;
-        [queue removeObjectAtIndex:0];
-        [queue addObjectsFromArray:node.subviews];
-        if (![node isKindOfClass:[UIImageView class]]) continue;
-        UIImageView *candidate = (UIImageView *)node;
-        CGFloat size = candidate.bounds.size.width * candidate.bounds.size.height;
-        if (candidate.image != nil && size > area) { area = size; best = candidate; }
-    }
-    [self write:best.image from:@"profile"];
+    UIImage *image = nil;
+    PSGImageBearingView(root, &image);
+    [self write:image from:@"button"];
 }
 
 @end
 
-#pragma mark - Route 1
+#pragma mark - Save button
 
-%hook LSNetworkImageView
-
-- (void)layoutSubviews {
-    %orig;
-    if (![PRMPrefs isEnabled:PRMKeyHoldToSave]) return;
-
-    // Deliberately without a duplicate check, matching the reference build.
-    UIView *view = (UIView *)self;
-    UILongPressGestureRecognizer *hold =
-        [[UILongPressGestureRecognizer alloc] initWithTarget:[PSGMediaSaver shared]
-                                                      action:@selector(handleHold:)];
-    hold.numberOfTouchesRequired = 1;
-    hold.minimumPressDuration = 0.5;
-    [view addGestureRecognizer:hold];
-
-    [PRMDebug noteHook:@"hold install"];
-    [PRMDebug setStatus:[NSString stringWithFormat:@"%.0fx%.0f uie=%d recognisers=%lu",
-                         view.bounds.size.width, view.bounds.size.height,
-                         view.userInteractionEnabled,
-                         (unsigned long)view.gestureRecognizers.count]
-                 forKey:@"hold install"];
+// The two screens that show an image with no way to keep it. Matched by
+// name, and each gets the button only once.
+static BOOL PSGScreenWantsSaveButton(NSString *name) {
+    return [name containsString:@"LSProfilePictureViewController"]
+        || [name containsString:@"MSGMessageLongPressOverlayViewController"];
 }
-
-%end
-
-#pragma mark - Route 2
 
 %hook UIViewController
 
@@ -145,19 +116,32 @@ static const NSInteger kPSGSaveButtonTag = 0x50534753;
 - (void)viewDidLayoutSubviews {
     %orig;
     if (![PRMPrefs isEnabled:PRMKeyHoldToSave]) return;
-    if (![NSStringFromClass([self class]) containsString:@"LSProfilePictureViewController"]) return;
+
+    NSString *name = NSStringFromClass([self class]);
+    if (!PSGScreenWantsSaveButton(name)) return;
 
     UIView *root = self.viewIfLoaded;
     if (root == nil || [root viewWithTag:kPSGSaveButtonTag] != nil) return;
 
-    [PRMDebug noteHook:@"profile save"];
+    UIImage *image = nil;
+    UIView *carrier = PSGImageBearingView(root, &image);
+    if (carrier == nil) {
+        [PRMDebug setStatus:[NSString stringWithFormat:@"%@: no image yet", name]
+                     forKey:@"save button"];
+        return;
+    }
 
-    // Placed opposite the host's own Close button, at the same size and on
-    // the same line, so it reads as part of the screen rather than added on.
+    [PRMDebug noteHook:@"save button"];
+
+    // Pinned to the top right of the picture itself rather than the screen,
+    // so it sits on the image on both screens without knowing either layout.
+    CGRect frame = [carrier convertRect:carrier.bounds toView:root];
+    CGFloat x = MIN(CGRectGetMaxX(frame) - 52, root.bounds.size.width - 52);
+    CGFloat y = MAX(CGRectGetMinY(frame) + 8, 60);
+
     UIButton *save = [UIButton buttonWithType:UIButtonTypeSystem];
     save.tag = kPSGSaveButtonTag;
-    save.frame = CGRectMake(root.bounds.size.width - 60, 78, 44, 44);
-    save.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+    save.frame = CGRectMake(MAX(x, 8), y, 44, 44);
     save.tintColor = [UIColor whiteColor];
     save.backgroundColor = [UIColor colorWithWhite:0 alpha:0.35];
     save.layer.cornerRadius = 22;
@@ -168,8 +152,11 @@ static const NSInteger kPSGSaveButtonTag = 0x50534753;
    forControlEvents:UIControlEventTouchUpInside];
     [root addSubview:save];
 
-    [PRMDebug noteAction:@"profile save"];
-    [PRMDebug setStatus:@"button added" forKey:@"profile save"];
+    [PRMDebug noteAction:@"save button"];
+    [PRMDebug setStatus:[NSString stringWithFormat:@"%@ on %@ %.0fx%.0f",
+                         name, NSStringFromClass([carrier class]),
+                         image.size.width, image.size.height]
+                 forKey:@"save button"];
 }
 
 %end
