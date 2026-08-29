@@ -52,23 +52,58 @@ static BOOL PSGSuppressAutoKeyboard(void) {
 //   [1 ivar1 send:hidden 44x44 off other:44x40 title=..]  field empty
 //
 // The action value stays at 1 in every sample, so the integer is not what
-// decides. What moves is the send button itself: hidden and disabled while
-// the emoji stays visible.
+// decides. What moves is the send button itself: hidden, disabled and sized
+// to zero while the emoji stays visible.
 //
 //   -[LSComposerActionView setAction:animated:]  v28@0:8q16B24
 //   ivar _sendButton : UIButton
 //
-// setAction: is a two instruction forward into this method, so every state
-// change passes here. That alone was not enough: it only fires on a
-// transition, so a composer built straight into the emoji state never
-// reached it, and a later layout pass put the emoji back. The pass is
-// therefore repeated from layoutSubviews, which the host runs on creation
-// and on every relayout.
+// Writing the properties back after the host wrote them produced a fight:
+// the button flashed on while text was typed and went away again on every
+// layout pass. The host is not undone after the fact any more. Its own send
+// button is given a subclass that refuses to be hidden, disabled or sized to
+// nothing, so the host's writes land on a receiver that ignores them.
+
+@interface PSGPersistentSendButton : UIButton
+@end
+
+@implementation PSGPersistentSendButton
+
+- (void)setHidden:(BOOL)hidden {
+    [super setHidden:NO];
+}
+
+- (void)setEnabled:(BOOL)enabled {
+    [super setEnabled:YES];
+}
+
+// The button is a sibling of the stack rather than one of its arranged
+// children, so the host collapses it to zero instead of laying it out. An
+// empty rect is replaced by the parent's, which keeps it the size of the
+// slot it sits in whatever that slot becomes.
+- (void)setFrame:(CGRect)frame {
+    if (CGRectIsEmpty(frame)) {
+        UIView *parent = self.superview;
+        if (parent != nil && !CGRectIsEmpty(parent.bounds)) frame = parent.bounds;
+    }
+    [super setFrame:frame];
+}
+
+@end
 
 static void PSGShowSendButton(UIView *view) {
     Ivar slot = class_getInstanceVariable(object_getClass(view), "_sendButton");
     UIButton *send = slot ? object_getIvar(view, slot) : nil;
     if (![send isKindOfClass:[UIButton class]]) return;
+
+    // Swapped once, and only when the button is still the plain class it was
+    // measured as. Anything else is left alone rather than guessed at.
+    if (object_getClass(send) == [UIButton class]) {
+        object_setClass(send, [PSGPersistentSendButton class]);
+        send.hidden = NO;
+        send.enabled = YES;
+        if (CGRectIsEmpty(send.frame)) send.frame = view.bounds;
+    }
 
     // The emoji is an arranged child of the stack rather than an ivar, so it
     // is found by being a button that is not the send button.
@@ -79,19 +114,12 @@ static void PSGShowSendButton(UIView *view) {
             if ([leaf isKindOfClass:[UIButton class]] && leaf != send) emoji = (UIButton *)leaf;
         }
     }
-
-    // Written only where it differs, so a layout pass that changes nothing
-    // cannot start another one.
     if (emoji != nil && !emoji.isHidden) emoji.hidden = YES;
-    if (send.isHidden) send.hidden = NO;
-    if (!send.isEnabled) send.enabled = YES;
-    // The send button is a sibling of the stack, not an arranged child, so it
-    // carries no width of its own once the host has collapsed it.
-    if (CGRectIsEmpty(send.frame) && !CGRectIsEmpty(view.bounds)) send.frame = view.bounds;
 
-    [PRMDebug setStatus:[NSString stringWithFormat:@"send %.0fx%.0f%@ emoji %@",
+    [PRMDebug setStatus:[NSString stringWithFormat:@"send %.0fx%.0f%@ %@ | emoji %@",
                          send.frame.size.width, send.frame.size.height,
                          send.isHidden ? @" hidden" : @"",
+                         object_getClass(send) == [PSGPersistentSendButton class] ? @"pinned" : @"PLAIN",
                          emoji == nil ? @"absent" : (emoji.isHidden ? @"hidden" : @"VISIBLE")]
                  forKey:@"quick reaction"];
 }
