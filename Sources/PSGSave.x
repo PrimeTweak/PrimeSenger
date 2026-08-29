@@ -451,8 +451,13 @@ static BOOL PSGIsAddedRow(NSIndexPath *path) {
     }
 
     [PRMDebug noteHook:@"menu row"];
-    UITableViewCell *row = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault
-                                                  reuseIdentifier:nil];
+    // The host's own cell class, so the row inherits its styling instead of
+    // imitating it. Measured: MSGContextMenuTableViewCell, height 44, a
+    // UITableViewLabel and a UIImageView, no constraints of its own.
+    Class native = objc_getClass("MSGContextMenuTableViewCell");
+    UITableViewCell *row = native
+        ? [[native alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil]
+        : [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
     row.backgroundColor = [UIColor clearColor];
     row.textLabel.text = @"Save";
     row.textLabel.font = [UIFont systemFontOfSize:16];
@@ -514,6 +519,31 @@ static BOOL PSGIsAddedRow(NSIndexPath *path) {
                  ? ((UIView *)container).frame : CGRectZero;
 
     UITableView *table = gTable;
+
+    // Measured: the added row is counted and its height is asked for, but its
+    // cell is never built. The table reports content 271 inside a frame of
+    // 227, five rows worth, so the sixth falls below the fold and a table
+    // never builds a cell it cannot show. Both the table and the container
+    // are grown by one row here, after the host has set them.
+    if ([PRMPrefs isEnabled:PRMKeySaveButton] && gRowHeight > 0 && table != nil) {
+        CGFloat wanted = table.contentSize.height;
+        if (wanted > table.frame.size.height) {
+            CGFloat grow = wanted - table.frame.size.height;
+            CGRect box = table.frame;
+            box.size.height = wanted;
+            table.frame = box;
+            if ([container isKindOfClass:[UIView class]]) {
+                CGRect outer = ((UIView *)container).frame;
+                outer.size.height += grow;
+                ((UIView *)container).frame = outer;
+            }
+            [PRMDebug noteAction:@"menu grown"];
+            [PRMDebug setStatus:[NSString stringWithFormat:@"grew by %.0f to %.0f",
+                                 grow, wanted]
+                         forKey:@"menu grown"];
+        }
+    }
+
     [PRMDebug setStatus:[NSString stringWithFormat:
                          @"container %.0f -> %.0f | table %.0fx%.0f content %.0f "
                           "inset %.0f/%.0f | row %.0f | max %ld",
