@@ -312,7 +312,10 @@ static BOOL PSGIsAddedRow(NSIndexPath *path) {
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)path {
     // The original is not called for the added row: the host's model has no
     // entry at this index.
-    if (!PSGIsAddedRow(path)) { %orig; return; }
+    if (!PSGIsAddedRow(path)) {
+        %orig;
+        return;
+    }
     [PRMDebug noteHook:@"menu tap"];
     [PRMDebug noteAction:@"menu tap"];
     [[PSGMediaSaver shared] saveLastCarrier];
