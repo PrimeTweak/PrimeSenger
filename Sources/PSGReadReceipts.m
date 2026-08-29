@@ -15,6 +15,10 @@ static const NSTimeInterval kWindow = 2.0;
     gLiveController = controller;
 }
 
++ (id)liveController {
+    return gLiveController;
+}
+
 + (BOOL)consumeGate {
     if (!gGateOpen) return NO;
     gGateOpen = NO;

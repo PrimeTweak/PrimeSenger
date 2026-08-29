@@ -14,6 +14,7 @@
 
 #import "PRMPrefs.h"
 #import "PRMDebug.h"
+#import "PSGReadReceipts.h"
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 
@@ -49,6 +50,31 @@ static BOOL PSGSuppressAutoKeyboard(void) {
 // Whether the field holds focus. The dressed button is wanted while the
 // keyboard is up and not once it is gone, and the host names both edges
 // itself rather than leaving them to be inferred from the keyboard frame.
+// Mark read on reply. The pill in the settings raises exactly one of the two
+// keys, so this and the manual eye never run for the same chat.
+//
+//   -[LSComposerViewController _sendMessageType:traceId:]  v32@0:8@16@24
+//
+// One point for every send. The receipt goes through the same primitive the
+// eye uses: the host's flag is lowered for a moment, its own read path runs,
+// and the flag goes back up.
+- (void)_sendMessageType:(id)type traceId:(id)traceId {
+    %orig;
+    [PRMDebug noteHook:@"read on reply"];
+    if (![PRMPrefs isEnabled:PRMKeyReadOnReply]) return;
+
+    id list = [PSGReadReceipts liveController];
+    if (list == nil) {
+        [PRMDebug setStatus:@"no thread on screen" forKey:@"read on reply"];
+        return;
+    }
+
+    [PRMDebug noteAction:@"read on reply"];
+    BOOL sent = [PSGReadReceipts sendReceiptOn:list];
+    [PRMDebug setStatus:sent ? @"receipt sent" : @"flag unreachable"
+                 forKey:@"read on reply"];
+}
+
 - (void)textViewDidBeginEditing:(id)textView {
     %orig;
     PSGComposerFocused = YES;

@@ -14,6 +14,9 @@
 // The thread currently on screen, or nil. Held weakly.
 + (void)setLiveController:(id)controller;
 
+// The thread currently on screen, or nil if it has gone away.
++ (id)liveController;
+
 // YES while a receipt has been asked for by hand. Consumed by the first
 // suppressed notification that checks it.
 + (BOOL)consumeGate;

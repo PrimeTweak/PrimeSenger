@@ -120,18 +120,39 @@ static BOOL PSGScreenWantsSaveButton(NSString *name) {
     NSString *name = NSStringFromClass([self class]);
     if (!PSGScreenWantsSaveButton(name)) return;
 
+    // Counted at the door, before any guard. The previous build counted
+    // after the image lookup, so a screen that appeared without a match was
+    // indistinguishable from a screen that never appeared at all.
+    BOOL overlay = [name containsString:@"LongPress"];
+    [PRMDebug noteHook:overlay ? @"save overlay" : @"save profile"];
+
     UIView *root = self.viewIfLoaded;
-    if (root == nil || [root viewWithTag:kPSGSaveButtonTag] != nil) return;
+    if (root == nil) return;
+    if ([root viewWithTag:kPSGSaveButtonTag] != nil) return;
 
     UIImage *image = nil;
     UIView *carrier = PSGImageBearingView(root, &image);
+
     if (carrier == nil) {
-        [PRMDebug setStatus:[NSString stringWithFormat:@"%@: no image yet", name]
-                     forKey:@"save button"];
+        // What the screen does hold, largest first, so the next pass aims at
+        // something measured instead of another guess about the hierarchy.
+        NSMutableArray<NSString *> *seen = [NSMutableArray array];
+        NSMutableArray<UIView *> *queue = [@[root] mutableCopy];
+        while (queue.count > 0 && seen.count < 40) {
+            UIView *node = queue.firstObject;
+            [queue removeObjectAtIndex:0];
+            [queue addObjectsFromArray:node.subviews];
+            CGSize size = node.bounds.size;
+            if (size.width < 80 || size.height < 80) continue;
+            [seen addObject:[NSString stringWithFormat:@"%@ %.0fx%.0f%@",
+                             NSStringFromClass([node class]), size.width, size.height,
+                             [node respondsToSelector:@selector(image)] ? @" HASIMAGE" : @""]];
+        }
+        [PRMDebug setStatus:[NSString stringWithFormat:@"%@ no match | %@",
+                             name, [seen componentsJoinedByString:@" , "]]
+                     forKey:overlay ? @"save overlay" : @"save profile"];
         return;
     }
-
-    [PRMDebug noteHook:@"save button"];
 
     // Pinned to the top right of the picture itself rather than the screen,
     // so it sits on the image on both screens without knowing either layout.
@@ -152,11 +173,12 @@ static BOOL PSGScreenWantsSaveButton(NSString *name) {
    forControlEvents:UIControlEventTouchUpInside];
     [root addSubview:save];
 
-    [PRMDebug noteAction:@"save button"];
-    [PRMDebug setStatus:[NSString stringWithFormat:@"%@ on %@ %.0fx%.0f",
-                         name, NSStringFromClass([carrier class]),
-                         image.size.width, image.size.height]
-                 forKey:@"save button"];
+    [PRMDebug noteAction:overlay ? @"save overlay" : @"save profile"];
+    [PRMDebug setStatus:[NSString stringWithFormat:@"on %@ %.0fx%.0f at %.0f,%.0f",
+                         NSStringFromClass([carrier class]),
+                         image.size.width, image.size.height, save.frame.origin.x, save.frame.origin.y]
+                 forKey:overlay ? @"save overlay" : @"save profile"];
 }
 
 %end
+

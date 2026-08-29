@@ -51,6 +51,11 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 @property (nonatomic, copy) NSString *auxKey;
 @property (nonatomic, copy) NSString *auxOnTitle;
 @property (nonatomic, copy) NSString *auxOffTitle;
+// Third state of the pill. When set, the pill cycles off, aux, third rather
+// than toggling, and the two keys are written as a pair so only one of them
+// is ever raised.
+@property (nonatomic, copy) NSString *thirdKey;
+@property (nonatomic, copy) NSString *thirdTitle;
 @end
 
 @implementation PSGSettingsRow
@@ -78,6 +83,21 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
     row.auxKey = auxKey;
     row.auxOnTitle = auxOnTitle;
     row.auxOffTitle = auxOffTitle;
+    return row;
+}
+
++ (instancetype)switchRow:(NSString *)title
+                   symbol:(NSString *)symbol
+                      key:(NSString *)key
+                   auxKey:(NSString *)auxKey
+               auxOnTitle:(NSString *)auxOnTitle
+              auxOffTitle:(NSString *)auxOffTitle
+                 thirdKey:(NSString *)thirdKey
+               thirdTitle:(NSString *)thirdTitle {
+    PSGSettingsRow *row = [self switchRow:title symbol:symbol key:key
+                                   auxKey:auxKey auxOnTitle:auxOnTitle auxOffTitle:auxOffTitle];
+    row.thirdKey = thirdKey;
+    row.thirdTitle = thirdTitle;
     return row;
 }
 
@@ -318,7 +338,8 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
         @[[PSGSettingsRow switchRow:@"Read receipts" symbol:@"eye.fill"
                                 key:PRMKeyReadAnonymously
                              auxKey:PRMKeyReadReceiptsManual
-                         auxOnTitle:@"Manual" auxOffTitle:@"Off"],
+                         auxOnTitle:@"Manual" auxOffTitle:@"Off"
+                           thirdKey:PRMKeyReadOnReply thirdTitle:@"On reply"],
           [PSGSettingsRow switchRow:@"Typing indicator" symbol:@"ellipsis.bubble.fill"
                                 key:PRMKeyHideTypingIndicator inverted:NO],
           [PSGSettingsRow switchRow:@"Quick reaction" symbol:@"face.smiling.fill"
@@ -387,8 +408,10 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 
     NSMutableArray *help = [@[
         @[@[@"Read receipts",
-            @"Nobody sees when you open a chat. With Manual on, an eye sits in the "
-             "conversation header, and tapping it sends a single receipt by hand."],
+            @"Nobody sees when you open a chat. Tap the pill to cycle: Off keeps "
+             "every chat silent, Manual puts an eye in the conversation header that "
+             "sends one receipt when tapped, and On reply sends one by itself the "
+             "moment you send a message in that chat."],
           @[@"Typing indicator",
             @"Stops the three dots from being sent while you type. You still see theirs."],
           @[@"Quick reaction",
@@ -671,10 +694,11 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 
     if (row.auxKey != nil && mainOn) {
         BOOL auxOn = [PRMPrefs isEnabled:row.auxKey];
-        [cell.pill setTitle:(auxOn ? row.auxOnTitle : row.auxOffTitle)
-                   forState:UIControlStateNormal];
-        [cell.pill setTitleColor:(auxOn ? [UIColor labelColor]
-                                        : [UIColor secondaryLabelColor])
+        BOOL thirdOn = row.thirdKey != nil && [PRMPrefs isEnabled:row.thirdKey];
+        NSString *label = thirdOn ? row.thirdTitle : (auxOn ? row.auxOnTitle : row.auxOffTitle);
+        [cell.pill setTitle:label forState:UIControlStateNormal];
+        [cell.pill setTitleColor:((auxOn || thirdOn) ? [UIColor labelColor]
+                                                     : [UIColor secondaryLabelColor])
                         forState:UIControlStateNormal];
         cell.pill.hidden = NO;
         cell.pill.tag = cell.toggle.tag;
@@ -745,9 +769,23 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
     PSGSettingsRow *row = [self rowForTag:pill.tag];
     if (row == nil || row.auxKey == nil) return;
 
-    BOOL next = ![PRMPrefs isEnabled:row.auxKey];
-    [PRMPrefs setEnabled:next forKey:row.auxKey];
-    [PRMDebug log:@"%@ aux %@ (%@)", row.title, next ? @"on" : @"off", row.auxKey];
+    if (row.thirdKey != nil) {
+        // Off, then aux, then third, then back. The two keys are written as a
+        // pair so a reader of either one never sees both raised.
+        BOOL auxOn = [PRMPrefs isEnabled:row.auxKey];
+        BOOL thirdOn = [PRMPrefs isEnabled:row.thirdKey];
+        BOOL nextAux = NO, nextThird = NO;
+        if (!auxOn && !thirdOn) nextAux = YES;
+        else if (auxOn) nextThird = YES;
+        [PRMPrefs setEnabled:nextAux forKey:row.auxKey];
+        [PRMPrefs setEnabled:nextThird forKey:row.thirdKey];
+        [PRMDebug log:@"%@ pill %@", row.title,
+                      nextThird ? row.thirdTitle : (nextAux ? row.auxOnTitle : row.auxOffTitle)];
+    } else {
+        BOOL next = ![PRMPrefs isEnabled:row.auxKey];
+        [PRMPrefs setEnabled:next forKey:row.auxKey];
+        [PRMDebug log:@"%@ aux %@ (%@)", row.title, next ? @"on" : @"off", row.auxKey];
+    }
 
     UIImpactFeedbackGenerator *haptic = [[UIImpactFeedbackGenerator alloc]
                                          initWithStyle:UIImpactFeedbackStyleLight];
