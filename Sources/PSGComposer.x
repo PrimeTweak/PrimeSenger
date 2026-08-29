@@ -17,6 +17,10 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 
+// Raised while the composer field holds focus, from the two edges the host
+// names itself.
+static BOOL PSGComposerFocused = NO;
+
 static BOOL PSGSuppressAutoKeyboard(void) {
     return ![PRMPrefs isEnabled:PRMKeyMasterDisable]
         && [PRMPrefs isEnabled:PRMKeyNoAutoKeyboard];
@@ -40,6 +44,29 @@ static BOOL PSGSuppressAutoKeyboard(void) {
         return;
     }
     %orig;
+}
+
+// Whether the field holds focus. The dressed button is wanted while the
+// keyboard is up and not once it is gone, and the host names both edges
+// itself rather than leaving them to be inferred from the keyboard frame.
+- (void)textViewDidBeginEditing:(id)textView {
+    %orig;
+    PSGComposerFocused = YES;
+    [PRMDebug setStatus:@"focused" forKey:@"composer focus"];
+}
+
+- (void)textViewDidEndEditing:(id)textView {
+    %orig;
+    PSGComposerFocused = NO;
+    [PRMDebug setStatus:@"unfocused" forKey:@"composer focus"];
+}
+
+// A swipe down dismisses the keyboard without ending editing through the
+// delegate, so the host's own resign path is watched as well.
+- (void)_resignTextViewFirstResponderIfNeeded {
+    %orig;
+    PSGComposerFocused = NO;
+    [PRMDebug setStatus:@"unfocused by resign" forKey:@"composer focus"];
 }
 
 %end
@@ -83,6 +110,15 @@ static void PSGDressEmojiAsSend(UIView *view) {
         [PRMDebug setStatus:@"emoji absent" forKey:@"quick reaction"];
         return;
     }
+
+    // With the keyboard gone the slot is left empty: no emoji, and the host's
+    // own send button untouched.
+    if (!PSGComposerFocused) {
+        if (!emoji.isHidden) emoji.hidden = YES;
+        [PRMDebug setStatus:@"unfocused, emoji hidden" forKey:@"quick reaction"];
+        return;
+    }
+    if (emoji.isHidden) emoji.hidden = NO;
 
     UIImage *glyph = [send imageForState:UIControlStateNormal];
     NSString *title = [emoji titleForState:UIControlStateNormal];
