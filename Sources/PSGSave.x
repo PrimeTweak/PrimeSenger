@@ -345,7 +345,12 @@ static BOOL PSGIsAddedRow(NSIndexPath *path) {
 // table, which would include the added row, or from the model, which would
 // clip it.
 - (void)_updateMenuHeight {
-    id view = [self getMenuView];
+    // The class is forward declared here, so self is held as id and the
+    // selector is sent through a cast rather than messaged as its own type.
+    id menu = self;
+    id view = [menu respondsToSelector:@selector(getMenuView)]
+            ? ((id (*)(id, SEL))objc_msgSend)(menu, @selector(getMenuView))
+            : nil;
     CGRect before = [view isKindOfClass:[UIView class]] ? ((UIView *)view).frame : CGRectZero;
     %orig;
     CGRect after = [view isKindOfClass:[UIView class]] ? ((UIView *)view).frame : CGRectZero;
