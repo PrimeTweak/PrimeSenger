@@ -225,54 +225,204 @@ static BOOL PSGScreenWantsSaveButton(NSString *name) {
 
 #pragma mark - Native menu probe
 
-static NSInteger gMenuSections = 0;
-static NSInteger gMenuLastSection = -1;
-static NSInteger gMenuRowsInLast = 0;
-static CGFloat gMenuRowHeight = 0;
+// Measured on the previous pass:
+//
+//   menu height   227 -> 271 | row 44 | rows 1     the container grew by
+//                                                  exactly one row height
+//   menu shape    2 sections, last has 1 rows
+//   menu cell     MSGContextMenuTableViewCell | UITableViewLabel(Reply) UIImageView
+//
+// So the container is sized from the table and the added row is not clipped.
+// What never happened is the table asking for it: neither the cell nor the
+// tap counter ever fired. That question was not instrumented, which is why
+// this pass records the whole surface at once rather than one hypothesis.
+//
+// Everything that can keep a row from being asked for is covered here: which
+// index paths are requested and in what order, the counts returned against
+// the counts asked, the table's own frame and content size against the
+// container's, the paging that splits items between the first page and the
+// More page, the grouped and more-action flags, and a forced reload to see
+// whether the row appears when the table is told to ask again.
+
+static NSMutableDictionary<NSNumber *, NSNumber *> *gRows = nil;
+static NSMutableArray<NSString *> *gAsks = nil;
+static __weak UITableView *gTable = nil;
+static NSInteger gSections = 0;
+static NSInteger gLastSection = -1;
+static NSInteger gMaxVisible = -1;
+static CGFloat gRowHeight = 0;
+static BOOL gReloadDone = NO;
+
+static void PSGNoteAsk(NSString *what, NSIndexPath *path) {
+    if (gAsks == nil) gAsks = [NSMutableArray array];
+    [gAsks addObject:[NSString stringWithFormat:@"%@%ld.%ld",
+                      what, (long)path.section, (long)path.row]];
+    while (gAsks.count > 26) [gAsks removeObjectAtIndex:0];
+    [PRMDebug setStatus:[gAsks componentsJoinedByString:@" "] forKey:@"menu asks"];
+}
 
 static BOOL PSGIsAddedRow(NSIndexPath *path) {
-    return gMenuLastSection >= 0
-        && path.section == gMenuLastSection
-        && path.row == gMenuRowsInLast;
+    if (gLastSection < 0 || path.section != gLastSection) return NO;
+    NSNumber *count = gRows[@(gLastSection)];
+    return count != nil && path.row == count.integerValue;
 }
 
 %hook MSGContextMenu
 
+#pragma mark Construction
+
+- (id)initWithMenuItems:(id)items
+    maxNumberOfVisibleItems:(NSInteger)maxItems
+            moreActionBlock:(id)block
+           presentationStyle:(NSUInteger)style {
+    id result = %orig;
+    gMaxVisible = maxItems;
+    [PRMDebug setStatus:[NSString stringWithFormat:@"plain | %lu items | max %ld | style %lu",
+                         (unsigned long)([items isKindOfClass:[NSArray class]]
+                                         ? [(NSArray *)items count] : 0),
+                         (long)maxItems, (unsigned long)style]
+                 forKey:@"menu init"];
+    return result;
+}
+
+- (id)initWithGroupedMenuItems:(id)items
+               moreActionBlock:(id)block
+             presentationStyle:(NSUInteger)style {
+    id result = %orig;
+    [PRMDebug setStatus:[NSString stringWithFormat:@"grouped | %lu groups | style %lu",
+                         (unsigned long)([items isKindOfClass:[NSArray class]]
+                                         ? [(NSArray *)items count] : 0),
+                         (unsigned long)style]
+                 forKey:@"menu init"];
+    return result;
+}
+
+- (id)initWithInfoView:(id)infoView
+             menuItems:(id)items
+    maxNumberOfVisibleItems:(NSInteger)maxItems
+            moreActionBlock:(id)block
+          presentationStyle:(NSUInteger)style {
+    id result = %orig;
+    gMaxVisible = maxItems;
+    [PRMDebug setStatus:[NSString stringWithFormat:@"infoView | %lu items | max %ld | style %lu",
+                         (unsigned long)([items isKindOfClass:[NSArray class]]
+                                         ? [(NSArray *)items count] : 0),
+                         (long)maxItems, (unsigned long)style]
+                 forKey:@"menu init"];
+    return result;
+}
+
+// A fresh presentation: the trace starts clean and the forced reload is armed
+// again.
+- (void)_setUpMenuView {
+    [gAsks removeAllObjects];
+    gReloadDone = NO;
+    %orig;
+    [PRMDebug noteHook:@"menu setup"];
+}
+
+#pragma mark Paging
+
+// The main suspicion: items are split between the first page and the page
+// behind the More action, and a row past the split is simply never asked for.
+- (id)createPrimaryAndSecondaryPagesWithMenuItems:(id)items {
+    id pages = %orig;
+    NSString *shape = @"not an array";
+    if ([pages isKindOfClass:[NSArray class]]) {
+        NSMutableArray<NSString *> *sizes = [NSMutableArray array];
+        for (id page in (NSArray *)pages) {
+            [sizes addObject:[page isKindOfClass:[NSArray class]]
+                             ? [NSString stringWithFormat:@"%lu", (unsigned long)[(NSArray *)page count]]
+                             : NSStringFromClass([page class])];
+        }
+        shape = [NSString stringWithFormat:@"in %lu -> pages [%@]",
+                 (unsigned long)([items isKindOfClass:[NSArray class]]
+                                 ? [(NSArray *)items count] : 0),
+                 [sizes componentsJoinedByString:@","]];
+    }
+    [PRMDebug setStatus:shape forKey:@"menu pages"];
+    return pages;
+}
+
+- (id)_createSecondaryRangesForMenuWithMenuItems:(id)items
+                                      maxOptions:(int)maxOptions
+                                  setsOfActions:(id)sets {
+    id ranges = %orig;
+    [PRMDebug setStatus:[NSString stringWithFormat:@"max %d | in %lu | out %@",
+                         maxOptions,
+                         (unsigned long)([items isKindOfClass:[NSArray class]]
+                                         ? [(NSArray *)items count] : 0),
+                         [ranges isKindOfClass:[NSArray class]]
+                             ? [NSString stringWithFormat:@"%lu", (unsigned long)[(NSArray *)ranges count]]
+                             : @"-"]
+                 forKey:@"menu ranges"];
+    return ranges;
+}
+
+- (BOOL)_menuContainsGroupedItems {
+    BOOL grouped = %orig;
+    [PRMDebug setStatus:grouped ? @"grouped" : @"flat" forKey:@"menu grouped"];
+    return grouped;
+}
+
+- (BOOL)_isMoreActionSection:(NSInteger)section {
+    BOOL more = %orig;
+    if (more) {
+        [PRMDebug setStatus:[NSString stringWithFormat:@"section %ld is the More section",
+                             (long)section]
+                     forKey:@"menu more"];
+    }
+    return more;
+}
+
+#pragma mark Data source
+
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
     NSInteger count = %orig;
-    gMenuSections = count;
-    gMenuLastSection = count - 1;
+    gTable = tableView;
+    gSections = count;
+    gLastSection = count - 1;
+    if (gRows == nil) gRows = [NSMutableDictionary dictionary];
     [PRMDebug noteHook:@"menu probe"];
     return count;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     NSInteger count = %orig;
-    if (![PRMPrefs isEnabled:PRMKeySaveButton]) return count;
-    if (section != gMenuLastSection) return count;
+    gTable = tableView;
+    if (gRows == nil) gRows = [NSMutableDictionary dictionary];
+    gRows[@(section)] = @(count);
 
-    gMenuRowsInLast = count;
+    if (![PRMPrefs isEnabled:PRMKeySaveButton]) return count;
+    if (section != gLastSection) return count;
+
     [PRMDebug noteAction:@"menu probe"];
-    [PRMDebug setStatus:[NSString stringWithFormat:@"%ld sections, last has %ld rows",
-                         (long)gMenuSections, (long)count]
+    [PRMDebug setStatus:[NSString stringWithFormat:@"%ld sections | rows %@ | returning %ld for %ld",
+                         (long)gSections, gRows, (long)(count + 1), (long)section]
                  forKey:@"menu shape"];
     return count + 1;
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)path {
-    if (PSGIsAddedRow(path)) return gMenuRowHeight > 0 ? gMenuRowHeight : 44.0;
+    PSGNoteAsk(@"h", path);
+    if (PSGIsAddedRow(path)) {
+        [PRMDebug noteHook:@"menu row height"];
+        return gRowHeight > 0 ? gRowHeight : 44.0;
+    }
     CGFloat height = %orig;
-    // The host's own height, reused for the added row so it never stands out.
-    if (height > 0) gMenuRowHeight = height;
+    if (height > 0) gRowHeight = height;
     return height;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView
          cellForRowAtIndexPath:(NSIndexPath *)path {
+    PSGNoteAsk(@"c", path);
+
     if (!PSGIsAddedRow(path)) {
         UITableViewCell *cell = %orig;
-        // The host's own cell, described once, so a later pass can match its
-        // look instead of approximating it.
+        // The host's own cell, described once with frames and constraint
+        // count, so the added row can be built from the real thing rather
+        // than approximated.
         static BOOL described = NO;
         if (!described && cell != nil) {
             described = YES;
@@ -284,13 +434,17 @@ static BOOL PSGIsAddedRow(NSIndexPath *path) {
                 [queue addObjectsFromArray:node.subviews];
                 NSString *text = [node isKindOfClass:[UILabel class]]
                                ? ([(UILabel *)node text] ?: @"") : @"";
-                [parts addObject:[NSString stringWithFormat:@"%@%@",
+                [parts addObject:[NSString stringWithFormat:@"%@ %.0f,%.0f %.0fx%.0f%@",
                                   NSStringFromClass([node class]),
+                                  node.frame.origin.x, node.frame.origin.y,
+                                  node.frame.size.width, node.frame.size.height,
                                   text.length ? [NSString stringWithFormat:@"(%@)", text] : @""]];
             }
-            [PRMDebug setStatus:[NSString stringWithFormat:@"%@ | %@",
+            [PRMDebug setStatus:[NSString stringWithFormat:@"%@ h%.0f cons%lu | %@",
                                  NSStringFromClass([cell class]),
-                                 [parts componentsJoinedByString:@" "]]
+                                 cell.frame.size.height,
+                                 (unsigned long)cell.contentView.constraints.count,
+                                 [parts componentsJoinedByString:@" , "]]
                          forKey:@"menu cell"];
         }
         return cell;
@@ -324,7 +478,10 @@ static BOOL PSGIsAddedRow(NSIndexPath *path) {
 - (void)tableView:(UITableView *)tableView
     willDisplayCell:(UITableViewCell *)cell
   forRowAtIndexPath:(NSIndexPath *)path {
-    if (PSGIsAddedRow(path)) return;
+    if (PSGIsAddedRow(path)) {
+        [PRMDebug noteHook:@"menu row shown"];
+        return;
+    }
     %orig;
 }
 
@@ -341,23 +498,50 @@ static BOOL PSGIsAddedRow(NSIndexPath *path) {
     return items;
 }
 
-// The question that decides the whole route: is the container sized from the
-// table, which would include the added row, or from the model, which would
-// clip it.
+#pragma mark Geometry and forced reload
+
 - (void)_updateMenuHeight {
     // The class is forward declared here, so self is held as id and the
     // selector is sent through a cast rather than messaged as its own type.
     id menu = self;
-    id view = [menu respondsToSelector:@selector(getMenuView)]
-            ? ((id (*)(id, SEL))objc_msgSend)(menu, @selector(getMenuView))
-            : nil;
-    CGRect before = [view isKindOfClass:[UIView class]] ? ((UIView *)view).frame : CGRectZero;
+    id container = [menu respondsToSelector:@selector(getMenuView)]
+                 ? ((id (*)(id, SEL))objc_msgSend)(menu, @selector(getMenuView))
+                 : nil;
+    CGRect before = [container isKindOfClass:[UIView class]]
+                  ? ((UIView *)container).frame : CGRectZero;
     %orig;
-    CGRect after = [view isKindOfClass:[UIView class]] ? ((UIView *)view).frame : CGRectZero;
-    [PRMDebug setStatus:[NSString stringWithFormat:@"%.0f -> %.0f | row %.0f | rows %ld",
+    CGRect after = [container isKindOfClass:[UIView class]]
+                 ? ((UIView *)container).frame : CGRectZero;
+
+    UITableView *table = gTable;
+    [PRMDebug setStatus:[NSString stringWithFormat:
+                         @"container %.0f -> %.0f | table %.0fx%.0f content %.0f "
+                          "inset %.0f/%.0f | row %.0f | max %ld",
                          before.size.height, after.size.height,
-                         gMenuRowHeight, (long)gMenuRowsInLast]
+                         table.frame.size.width, table.frame.size.height,
+                         table.contentSize.height,
+                         table.contentInset.top, table.contentInset.bottom,
+                         gRowHeight, (long)gMaxVisible]
                  forKey:@"menu height"];
+
+    if (!gReloadDone && table != nil && [PRMPrefs isEnabled:PRMKeySaveButton]) {
+        gReloadDone = YES;
+        // Told to ask again once, on the next turn of the runloop, so the
+        // trace shows whether the row is reachable at all or only skipped on
+        // the first pass.
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UITableView *again = gTable;
+            if (again == nil) return;
+            NSInteger rowsBefore = [again numberOfRowsInSection:MAX(gLastSection, 0)];
+            [again reloadData];
+            NSInteger rowsAfter = [again numberOfRowsInSection:MAX(gLastSection, 0)];
+            [PRMDebug setStatus:[NSString stringWithFormat:
+                                 @"rows %ld -> %ld | content %.0f | frame %.0f",
+                                 (long)rowsBefore, (long)rowsAfter,
+                                 again.contentSize.height, again.frame.size.height]
+                         forKey:@"menu reload"];
+        });
+    }
 }
 
 %end
