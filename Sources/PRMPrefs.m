@@ -10,7 +10,8 @@ NSString *const PRMKeyRevealCensored        = @"psg_reveal_censored";
 NSString *const PRMKeyViewOnce              = @"psg_view_once";
 NSString *const PRMKeyHideQuickReaction     = @"psg_hide_quick_reaction";
 NSString *const PRMKeyUploadHD              = @"psg_upload_hd";
-NSString *const PRMKeyHoldToSave            = @"psg_hold_to_save";
+// Stored under its original name so an existing setting is not lost.
+NSString *const PRMKeySaveButton            = @"psg_hold_to_save";
 NSString *const PRMKeyReadOnReply           = @"psg_read_on_reply";
 NSString *const PRMKeyDebugActions          = @"psg_debug_actions";
 NSString *const PRMKeyHideStoryReplyBar     = @"psg_hide_story_reply_bar";
@@ -46,7 +47,7 @@ NSString *const PRMKeyNoAutoKeyboard       = @"psg_no_auto_keyboard";
         PRMKeyViewOnce,
         PRMKeyHideQuickReaction,
         PRMKeyUploadHD,
-        PRMKeyHoldToSave,
+        PRMKeySaveButton,
         PRMKeyReadOnReply,
         PRMKeyDebugActions,
         PRMKeyHideStoryReplyBar,

@@ -12,7 +12,7 @@ extern NSString *const PRMKeyRevealCensored;
 extern NSString *const PRMKeyViewOnce;
 extern NSString *const PRMKeyHideQuickReaction;
 extern NSString *const PRMKeyUploadHD;
-extern NSString *const PRMKeyHoldToSave;
+extern NSString *const PRMKeySaveButton;
 extern NSString *const PRMKeyReadOnReply;
 extern NSString *const PRMKeyDebugActions;
 extern NSString *const PRMKeyHideStoryReplyBar;

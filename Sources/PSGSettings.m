@@ -374,8 +374,8 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
         @[[PSGSettingsRow switchRow:@"Saving & forwarding"
                              symbol:@"square.and.arrow.down.fill"
                                 key:PRMKeyUnlockMedia inverted:NO],
-          [PSGSettingsRow switchRow:@"Hold to save" symbol:@"hand.tap.fill"
-                                key:PRMKeyHoldToSave inverted:NO],
+          [PSGSettingsRow switchRow:@"Save button" symbol:@"arrow.down.to.line"
+                                key:PRMKeySaveButton inverted:NO],
           [PSGSettingsRow switchRow:@"Censored media"
                              symbol:@"exclamationmark.triangle.fill"
                                 key:PRMKeyRevealCensored inverted:NO],
@@ -451,9 +451,10 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
             @"Opens every action Messenger refuses on a photo or video: saving, "
              "copying, sharing, forwarding, replying, editing, Live Text, adding to "
              "a story or a shared album."],
-          @[@"Hold to save",
-            @"Hold any picture in the app to write it to your camera roll, "
-             "including thumbnails and avatars that offer no save button."],
+          @[@"Save button",
+            @"Puts a save button on the screens that show a picture with no way "
+             "to keep it: the profile picture viewer, and the preview that opens "
+             "when you hold a message."],
           @[@"Censored media",
             @"Shows media Messenger covers with a warning, without the tap to reveal."],
           @[@"View once media",
@@ -565,9 +566,10 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
           @[@"HD uploads",
             @"Turns the HD switch on in the photo picker every time it opens, so "
              "photos are sent at full quality without setting it by hand."],
-          @[@"Hold to save",
-            @"Hold any picture in the app to write it to your camera roll, "
-             "including thumbnails and avatars that offer no save button."]],
+          @[@"Save button",
+            @"Puts a save button on the screens that show a picture with no way "
+             "to keep it: the profile picture viewer, and the preview that opens "
+             "when you hold a message."]],
 
         @[@[@"Liquid Glass",
             @"Places a real iOS tab bar inside Messenger's own, so the bar picks up "
