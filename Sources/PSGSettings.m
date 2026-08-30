@@ -412,7 +412,8 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
         @[@[@"Read receipts",
             @"Nobody sees when you open a chat. Tap the pill to cycle: Off, Manual "
              "(an eye in the header sends one receipt when you tap it), On reply "
-             "(a receipt goes out when you send a message)."],
+             "(the same eye, plus a receipt that goes out by itself whenever you "
+             "send a message)."],
           @[@"Typing indicator",
             @"The three dots are never sent while you type. You still see theirs."],
           @[@"Quick reaction",

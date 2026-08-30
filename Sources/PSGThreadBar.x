@@ -91,8 +91,12 @@ static BOOL PSGEyeWanted(void) {
         && [PRMPrefs isEnabled:PRMKeyReadAnonymously];
 }
 
+// True for both pill states that can send a receipt. On reply sends one by
+// itself when a message goes out, and the eye stays available on top of that
+// for the chats where nothing is sent.
 static BOOL PSGManualAllowed(void) {
-    return [PRMPrefs isEnabled:PRMKeyReadReceiptsManual];
+    return [PRMPrefs isEnabled:PRMKeyReadReceiptsManual]
+        || [PRMPrefs isEnabled:PRMKeyReadOnReply];
 }
 
 #pragma mark - Target
