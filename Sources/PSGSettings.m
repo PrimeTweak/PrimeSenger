@@ -367,15 +367,15 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
         @[[PSGSettingsRow switchRow:@"Story views" symbol:@"eye.circle.fill"
                                 key:PRMKeyStoriesAnonymously inverted:NO],
           [PSGSettingsRow switchRow:@"Reply bar" symbol:@"bubble.left.fill"
-                                key:PRMKeyHideStoryReplyBar inverted:NO],
-          [PSGSettingsRow switchRow:@"Screenshot alerts" symbol:@"camera.fill"
-                                key:PRMKeyBlockScreenshotNotice inverted:NO]],
+                                key:PRMKeyHideStoryReplyBar inverted:NO]],
 
-        @[[PSGSettingsRow switchRow:@"Saving & forwarding"
+        @[[PSGSettingsRow switchRow:@"Media actions"
                              symbol:@"square.and.arrow.down.fill"
                                 key:PRMKeyUnlockMedia inverted:NO],
           [PSGSettingsRow switchRow:@"Save button" symbol:@"arrow.down.to.line"
                                 key:PRMKeySaveButton inverted:NO],
+          [PSGSettingsRow switchRow:@"Screenshot alerts" symbol:@"camera.fill"
+                                key:PRMKeyBlockScreenshotNotice inverted:NO],
           [PSGSettingsRow switchRow:@"Censored media"
                              symbol:@"exclamationmark.triangle.fill"
                                 key:PRMKeyRevealCensored inverted:NO],
@@ -406,66 +406,64 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
                                 key:PRMKeyDebugActions inverted:NO]],
     ] mutableCopy];
 
+    // One or two sentences each, about what the person sees rather than how
+    // the hook works, and naming a limit whenever one exists.
     NSMutableArray *help = [@[
         @[@[@"Read receipts",
-            @"Nobody sees when you open a chat. Tap the pill to cycle: Off keeps "
-             "every chat silent, Manual puts an eye in the conversation header that "
-             "sends one receipt when tapped, and On reply sends one by itself the "
-             "moment you send a message in that chat."],
+            @"Nobody sees when you open a chat. Tap the pill to cycle: Off, Manual "
+             "(an eye in the header sends one receipt when you tap it), On reply "
+             "(a receipt goes out when you send a message)."],
           @[@"Typing indicator",
-            @"Stops the three dots from being sent while you type. You still see theirs."],
+            @"The three dots are never sent while you type. You still see theirs."],
           @[@"Quick reaction",
-            @"With the field empty, the composer shows an emoji that sends on a "
-             "single tap. This keeps the send button there instead."],
+            @"The emoji beside an empty field becomes a send button, so a mis-tap "
+             "no longer fires a reaction."],
           @[@"Keep keyboard closed",
-            @"Opening a conversation no longer raises the keyboard. Tapping the "
-             "composer still does."],
+            @"Opening a chat no longer raises the keyboard. Tapping the field "
+             "still does."],
           @[@"Confirm before calling",
-            @"Asks first when you tap a call button, so a mis-tap in the header does "
-             "not ring anyone."],
+            @"Asks before a call starts, so a mis-tap in the header never rings "
+             "anyone."],
           @[@"HD uploads",
-            @"Turns the HD switch on in the photo picker every time it opens, so "
-             "photos are sent at full quality without setting it by hand."]],
+            @"Turns HD on in Messenger's own photo picker every time it opens. "
+             "Photos sent through the system picker are not affected."]],
 
         @[@[@"Stories tray",
-            @"Removes the row of story circles above your conversations."],
+            @"Removes the row of story circles above the chat list."],
           @[@"People you may know",
             @"Removes the contact suggestions Messenger inserts into the chat list."],
           @[@"Meta AI in search",
-            @"The search field asks to search, and stops offering Meta AI."],
+            @"The search field says Search instead of offering Meta AI."],
           @[@"Meta AI button",
             @"Removes the round Meta AI button floating over the chat list."]],
 
         @[@[@"Friend suggestions",
-            @"Removes the same contact suggestions where they appear in the "
-             "notifications tab."]],
+            @"Removes contact suggestions from the notifications tab."]],
 
         @[@[@"Story views",
-            @"You can watch a story without the sender being told."],
+            @"Watch a story without the sender being told."],
           @[@"Reply bar",
-            @"Removes the reply field at the bottom of a story."],
-          @[@"Screenshot alerts",
-            @"The sender is not told when you screenshot a disappearing photo."]],
+            @"Removes the reply field under a story."]],
 
-        @[@[@"Saving & forwarding",
-            @"Opens every action Messenger refuses on a photo or video: saving, "
-             "copying, sharing, forwarding, replying, editing, Live Text, adding to "
-             "a story or a shared album."],
+        @[@[@"Media actions",
+            @"Opens every action Messenger greys out on a photo or video: save, "
+             "share, forward, copy, Info, and six more."],
           @[@"Save button",
-            @"Puts a save button on the screens that show a picture with no way "
-             "to keep it: the profile picture viewer, and the preview that opens "
-             "when you hold a message."],
+            @"Adds a save button to pictures Messenger gives you no way to keep: "
+             "story photos, disappearing photos, and profile pictures."],
+          @[@"Screenshot alerts",
+            @"The sender is not told when you screenshot a disappearing photo."],
           @[@"Censored media",
-            @"Shows media Messenger covers with a warning, without the tap to reveal."],
+            @"Shows media hidden behind a warning, without the tap to reveal."],
           @[@"View once media",
-            @"A View once photo or video normally burns the first time you open it. "
-             "This keeps it from being marked as opened, so it stays there."],
+            @"A View once photo stays openable instead of burning the first time "
+             "you look at it."],
           @[@"Loop videos",
-            @"A video restarts from the beginning instead of stopping at the end."]],
+            @"A video restarts instead of stopping at the end."]],
 
         @[@[@"Liquid Glass",
-            @"Replaces Messenger's own tab bar with the system one, which carries "
-             "the glass material."],
+            @"Replaces Messenger's tab bar with the system one, which carries the "
+             "glass material."],
           @[@"Chats",
             @"Removes the Chats tab from the bar."],
           @[@"Stories",
@@ -476,16 +474,15 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
             @"Removes the Menu tab from the bar."]],
 
         @[@[@"Logging",
-            @"Records what the tweak does into a 4000 line buffer while Messenger "
-             "runs. Leave it off unless you are measuring something."],
+            @"Records what the tweak does while Messenger runs. Leave it off "
+             "unless you are measuring something."],
           @[@"Floating access button",
-            @"A round button over Messenger. Tap it to open these settings, hold it "
-             "to open FLEX, drag it to move it."],
+            @"A round button over Messenger: tap for settings, hold for FLEX, "
+             "drag to move it."],
           @[@"FLEX explorer",
-            @"Apple's view inspector. Opened by holding the floating button."],
+            @"Apple's view inspector, opened by holding the floating button."],
           @[@"Debug actions",
-            @"Reveals the report and measurement buttons below. They stay out of "
-             "the way while this is off."]],
+            @"Shows the report and measurement buttons below."]],
     ] mutableCopy];
 
     // The actions are a card of their own, untitled, so it reads as a group
@@ -507,100 +504,12 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
                               key:PRMKeyMasterDisable inverted:NO]]];
     [help addObject:@[
         @[@"Pause PrimeSenger",
-          @"Suspends every removal and every added control at once, without "
-           "touching your switches. Turn it off and they all come back."]]];
+          @"Suspends everything at once without touching your switches."]]];
 
     self.titles = titles;
     self.sections = sections;
     self.help = help;
-    // Written from the hook each switch drives, not from its label. Kept in
-    // the same order as the rows above.
-    self.help = @[
-        @[@[@"Read receipts",
-            @"Nobody sees when you open a chat. With Manual on, an eye sits in the "
-             "conversation header, and tapping it sends a single receipt by hand."],
-          @[@"Typing indicator",
-            @"Stops the three dots from being sent while you type. You still see theirs."],
-          @[@"Keep keyboard closed",
-            @"The keyboard no longer opens by itself when you enter a chat. Tapping "
-             "the message field still opens it."],
-          @[@"Confirm before calling",
-            @"Asks first when you tap a call button, so a mis-tap in the header does "
-             "not ring anyone."],
-          @[@"Quick reaction",
-            @"With the field empty, the composer shows an emoji that sends on a "
-             "single tap. This keeps the send button there instead."]],
 
-        @[@[@"Stories tray",
-            @"Removes the row of story bubbles from the top of the conversation list."],
-          @[@"People you may know",
-            @"Removes the suggested contacts from the end of the conversation list."],
-          @[@"Meta AI in search",
-            @"The search field reads Search instead of offering Meta AI."],
-          @[@"Meta AI button",
-            @"Removes the floating Meta AI button from the conversation list."]],
-
-        @[@[@"People you may know",
-            @"Removes suggested contacts from the Notifications tab."]],
-
-        @[@[@"Story views",
-            @"Watch a story without appearing in its viewer list."],
-          @[@"Reply bar",
-            @"Removes the reply field from the bottom of a story."],
-          @[@"Screenshot alerts",
-            @"Messenger tells the other person when you capture their story or a "
-             "disappearing photo. This stops that message from being sent."]],
-
-        @[@[@"Saving & forwarding",
-            @"Opens every action Messenger refuses on a photo or video: saving, "
-             "copying, sharing, forwarding, replying, editing, Live Text, adding "
-             "to a story or a shared album. Ordinary media already allows most of "
-             "these, so the switch only shows on the ones it blocks."],
-          @[@"Censored media",
-            @"Shows media Messenger covers with a warning, without the tap to reveal."],
-          @[@"View once media",
-            @"A View once photo or video normally burns the first time you open it. "
-             "This keeps it from being marked as opened, so it stays there."],
-          @[@"Loop videos",
-            @"A video restarts from the beginning instead of stopping at the end."],
-          @[@"HD uploads",
-            @"Turns the HD switch on in the photo picker every time it opens, so "
-             "photos are sent at full quality without setting it by hand."],
-          @[@"Save button",
-            @"Puts a save button on the screens that show a picture with no way "
-             "to keep it: the profile picture viewer, and the preview that opens "
-             "when you hold a message."]],
-
-        @[@[@"Liquid Glass",
-            @"Places a real iOS tab bar inside Messenger's own, so the bar picks up "
-             "the system's Liquid Glass. Taps are handed back to Messenger, so "
-             "nothing about navigation changes."],
-          @[@"Chats, Stories, Notifications, Menu",
-            @"Each switch removes that tab from the bar. Hiding all four leaves the "
-             "bar empty."]],
-
-        @[@[@"Logging",
-            @"Records what the tweak does into a 4000 line buffer while Messenger "
-             "runs. Leave it off unless you are measuring something."],
-          @[@"Floating access button",
-            @"A round button over Messenger. Tap it to open these settings, hold it "
-             "to open FLEX, drag it to move it."],
-          @[@"FLEX explorer",
-            @"Apple's view inspector. Opened by holding the floating button."],
-          @[@"Copy everything",
-            @"Puts the whole report on the clipboard."],
-          @[@"Run full scan",
-            @"Lists every class the tweak knows about, then copies the report."],
-          @[@"Capture in 8 seconds",
-            @"Closes settings, waits eight seconds, then records the screen you "
-             "ended up on."],
-          @[@"Open debug report",
-            @"Closes settings and shows the report on screen."]],
-
-        @[@[@"Pause PrimeSenger",
-            @"Suspends every removal and every added control at once, without "
-             "touching your switches. Turn it off and they all come back."]],
-    ];
 }
 
 - (void)close {
