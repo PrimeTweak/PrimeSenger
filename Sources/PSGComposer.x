@@ -39,6 +39,8 @@ static BOOL PSGSuppressAutoKeyboard(void) {
 }
 
 - (void)_scheduleAutoOpenKeyboardAfterOpenComposerView {
+    // A fresh composer starts unfocused, whatever the previous thread left.
+    PSGComposerFocused = NO;
     [PRMDebug noteHook:@"auto keyboard"];
     if (PSGSuppressAutoKeyboard()) {
         [PRMDebug noteAction:@"auto keyboard"];
@@ -132,51 +134,56 @@ static void PSGDressEmojiAsSend(UIView *view) {
             if ([leaf isKindOfClass:[UIButton class]] && leaf != send) emoji = (UIButton *)leaf;
         }
     }
-    if (emoji == nil) {
-        [PRMDebug setStatus:@"emoji absent" forKey:@"quick reaction"];
-        return;
-    }
+    if (emoji == nil) return;
+
+    // Written only when the line changes: this runs on every layout pass of
+    // the action view, and formatting a string each time was measurable.
+    static NSString *last = nil;
+    NSString *line = nil;
 
     // With the keyboard gone the slot is left empty: no emoji, and the host's
     // own send button untouched.
     if (!PSGComposerFocused) {
         if (!emoji.isHidden) emoji.hidden = YES;
-        [PRMDebug setStatus:@"unfocused, emoji hidden" forKey:@"quick reaction"];
-        return;
-    }
-    if (emoji.isHidden) emoji.hidden = NO;
+        line = @"unfocused, emoji hidden";
+    } else {
+        // The send target first. Dressing the button before the target is
+        // known left a button that looked like Send and still sent the emoji
+        // whenever the host had not wired its own button yet.
+        id target = send.allTargets.anyObject;
+        NSArray<NSString *> *actions = target
+            ? [send actionsForTarget:target forControlEvent:UIControlEventTouchUpInside]
+            : nil;
 
-    UIImage *glyph = [send imageForState:UIControlStateNormal];
-    NSString *title = [emoji titleForState:UIControlStateNormal];
+        if (target == nil || actions.count == 0) {
+            if (!emoji.isHidden) emoji.hidden = YES;
+            line = @"send target not wired, emoji hidden";
+        } else {
+            SEL action = NSSelectorFromString(actions.firstObject);
+            if (![[emoji actionsForTarget:target forControlEvent:UIControlEventTouchUpInside]
+                    containsObject:actions.firstObject]) {
+                [emoji removeTarget:nil action:NULL forControlEvents:UIControlEventTouchUpInside];
+                [emoji addTarget:target action:action forControlEvents:UIControlEventTouchUpInside];
+            }
 
-    // Written only where it differs, so a layout pass that changes nothing
-    // cannot start another one.
-    if (title.length > 0) [emoji setTitle:@"" forState:UIControlStateNormal];
-    if (glyph != nil && [emoji imageForState:UIControlStateNormal] != glyph) {
-        [emoji setImage:glyph forState:UIControlStateNormal];
-    }
+            UIImage *glyph = [send imageForState:UIControlStateNormal];
+            if ([emoji titleForState:UIControlStateNormal].length > 0) {
+                [emoji setTitle:@"" forState:UIControlStateNormal];
+            }
+            if (glyph != nil && [emoji imageForState:UIControlStateNormal] != glyph) {
+                [emoji setImage:glyph forState:UIControlStateNormal];
+            }
+            if (emoji.isHidden) emoji.hidden = NO;
 
-    // The tap is routed to whatever the host wired the send button to, so
-    // nothing is invented and the send path stays the host's own.
-    NSArray<NSString *> *actions =
-        [send actionsForTarget:send.allTargets.anyObject
-               forControlEvent:UIControlEventTouchUpInside];
-    id target = send.allTargets.anyObject;
-    if (target != nil && actions.count > 0) {
-        SEL action = NSSelectorFromString(actions.firstObject);
-        if (![[emoji actionsForTarget:target forControlEvent:UIControlEventTouchUpInside]
-                containsObject:actions.firstObject]) {
-            [emoji removeTarget:nil action:NULL forControlEvents:UIControlEventTouchUpInside];
-            [emoji addTarget:target action:action forControlEvents:UIControlEventTouchUpInside];
+            line = [NSString stringWithFormat:@"dressed | glyph %@ | target %@",
+                    glyph ? @"copied" : @"MISSING", NSStringFromClass([target class])];
         }
     }
 
-    [PRMDebug setStatus:[NSString stringWithFormat:@"emoji %.0fx%.0f%@ | glyph %@ | target %@",
-                         emoji.frame.size.width, emoji.frame.size.height,
-                         emoji.isHidden ? @" hidden" : @"",
-                         glyph ? @"copied" : @"MISSING",
-                         target ? NSStringFromClass([target class]) : @"none"]
-                 forKey:@"quick reaction"];
+    if (![line isEqualToString:last]) {
+        last = line;
+        [PRMDebug setStatus:line forKey:@"quick reaction"];
+    }
 }
 
 %hook LSComposerActionView

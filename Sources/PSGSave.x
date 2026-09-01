@@ -155,12 +155,38 @@ static void PSGAddSaveButton(UIView *root, UIView *carrier, NSString *key) {
 // The one screen the shared viewer does not serve: measured, it shows a plain
 // UIImageView. It is a Swift class, matched by name rather than hooked, the
 // way PSGScreens.x matches the Meta AI controller.
+// Resolved once by its runtime name, so the check below is a pointer walk
+// rather than a string build and compare on every layout pass of every view
+// controller in the app. The name is the one NSStringFromClass reported.
+static Class PSGProfileViewerClass(void) {
+    static Class resolved = Nil;
+    static BOOL tried = NO;
+    if (!tried) {
+        tried = YES;
+        resolved = objc_getClass("LSThreadProfilePictureViewerSwift.LSProfilePictureViewController");
+    }
+    return resolved;
+}
+
 %hook UIViewController
 
 - (void)viewDidLayoutSubviews {
     %orig;
     if (![PRMPrefs isEnabled:PRMKeySaveButton]) return;
-    if (![NSStringFromClass([self class]) containsString:@"LSProfilePictureViewController"]) return;
+
+    Class wanted = PSGProfileViewerClass();
+    if (wanted != Nil) {
+        if (![self isKindOfClass:wanted]) return;
+    } else {
+        // The name lookup failed on this build: fall back to the string match
+        // once per class, remembered so the cost is paid a single time.
+        static Class matched = Nil;
+        if (matched == Nil
+            && [NSStringFromClass([self class]) containsString:@"LSProfilePictureViewController"]) {
+            matched = [self class];
+        }
+        if (matched == Nil || ![self isKindOfClass:matched]) return;
+    }
 
     [PRMDebug noteHook:@"save profile"];
 
