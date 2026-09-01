@@ -29,6 +29,7 @@
 #import "PRMPrefs.h"
 #import "PRMDebug.h"
 #import "PSGReadReceipts.h"
+#import "PSGSilence.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
 
@@ -214,6 +215,117 @@ static UIButton *PSGMakeEyeButton(PSGReceiptEye *eye) {
     return button;
 }
 
+#pragma mark - Bell
+
+static const NSInteger kPSGBellTag = 0x50534702;
+static const char kPSGBellTarget;
+
+// The thread key of the host, as the string PSGSilence keys on. Measured:
+// MSGThreadViewController answers threadQueryKey with an object.
+static NSString *PSGThreadIdentifier(UIViewController *host) {
+    if (![host respondsToSelector:@selector(threadQueryKey)]) return nil;
+    id key = ((id (*)(id, SEL))objc_msgSend)(host, @selector(threadQueryKey));
+    return [PSGSilence identifierForThreadKey:key];
+}
+
+@interface PSGSilenceBell : NSObject
+@property (nonatomic, weak) UIViewController *host;
+@end
+
+static void PSGApplyBellGlyph(UIButton *button, BOOL silenced) {
+    UIImageSymbolConfiguration *configuration =
+        [UIImageSymbolConfiguration configurationWithPointSize:kPSGEyeGlyph
+                                                        weight:UIImageSymbolWeightRegular];
+    UIImage *glyph = [UIImage systemImageNamed:silenced ? @"bell.slash.fill" : @"bell.fill"
+                            withConfiguration:configuration];
+    if (glyph != nil) {
+        [button setImage:glyph forState:UIControlStateNormal];
+    } else {
+        [button setTitle:silenced ? @"Off" : @"On" forState:UIControlStateNormal];
+    }
+    button.alpha = silenced ? 1.0 : 0.45;
+}
+
+@implementation PSGSilenceBell
+
+- (void)tapped:(UIButton *)button {
+    NSString *identifier = PSGThreadIdentifier(self.host);
+    if (identifier == nil) {
+        [PRMDebug setStatus:@"bell: no thread key on host" forKey:@"silence bell"];
+        UIImpactFeedbackGenerator *refuse = [[UIImpactFeedbackGenerator alloc]
+            initWithStyle:UIImpactFeedbackStyleRigid];
+        [refuse impactOccurred];
+        return;
+    }
+    BOOL next = ![PSGSilence isSilenced:identifier];
+    [PSGSilence setSilenced:next identifier:identifier];
+    PSGApplyBellGlyph(button, next);
+    [PRMDebug noteAction:@"silence bell"];
+    [PRMDebug setStatus:[NSString stringWithFormat:@"%@ -> %@ (%lu silenced)",
+                         identifier, next ? @"silenced" : @"restored",
+                         (unsigned long)[PSGSilence count]]
+                 forKey:@"silence bell"];
+    UIImpactFeedbackGenerator *haptic = [[UIImpactFeedbackGenerator alloc]
+        initWithStyle:UIImpactFeedbackStyleMedium];
+    [haptic impactOccurred];
+}
+
+@end
+
+static UIButton *PSGMakeBellButton(PSGSilenceBell *bell) {
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+    button.tag = kPSGBellTag;
+    button.accessibilityLabel = @"Silence this chat";
+    button.translatesAutoresizingMaskIntoConstraints = NO;
+    [button.widthAnchor constraintEqualToConstant:kPSGEyeSide].active = YES;
+    [button.heightAnchor constraintEqualToConstant:kPSGEyeSide].active = YES;
+    [button addTarget:bell action:@selector(tapped:)
+     forControlEvents:UIControlEventTouchUpInside];
+    return button;
+}
+
+// Placed the way the eye is, in the same stack, and kept in step with the
+// stored list so a chat silenced elsewhere shows the crossed bell here.
+static void PSGSyncBell(UIViewController *host, NSString *pass) {
+    UIView *root = host.viewIfLoaded.window;
+    if (root == nil) return;
+
+    UIStackView *stack = PSGCallButtonStack(root, 0);
+    UIButton *existing = stack ? (UIButton *)[stack viewWithTag:kPSGBellTag] : nil;
+
+    BOOL wanted = ![PRMPrefs isEnabled:PRMKeyMasterDisable]
+               && [PRMPrefs isEnabled:PRMKeySilencedChats];
+    if (!wanted) {
+        [existing removeFromSuperview];
+        objc_setAssociatedObject(host, &kPSGBellTarget, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return;
+    }
+    if (stack == nil) return;
+
+    NSString *identifier = PSGThreadIdentifier(host);
+    BOOL silenced = [PSGSilence isSilenced:identifier];
+
+    if (existing != nil) {
+        PSGApplyBellGlyph(existing, silenced);
+        return;
+    }
+
+    PSGSilenceBell *bell = [[PSGSilenceBell alloc] init];
+    bell.host = host;
+    UIButton *button = PSGMakeBellButton(bell);
+    objc_setAssociatedObject(host, &kPSGBellTarget, bell, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    PSGApplyBellGlyph(button, silenced);
+
+    // After the eye when it is there, first otherwise.
+    NSInteger index = [stack viewWithTag:kPSGEyeTag] != nil ? 1 : 0;
+    [stack insertArrangedSubview:button atIndex:index];
+
+    [PRMDebug noteHook:@"silence bell"];
+    [PRMDebug setStatus:[NSString stringWithFormat:@"placed at %@ | key %@ | %@",
+                         pass, identifier ?: @"NONE", silenced ? @"silenced" : @"open"]
+                 forKey:@"silence bell"];
+}
+
 static void PSGSyncEye(UIViewController *host, NSString *pass) {
     UIView *root = host.viewIfLoaded.window;
     if (root == nil) return;
@@ -292,12 +404,14 @@ static void PSGSyncEye(UIViewController *host, NSString *pass) {
 - (void)viewDidLoad {
     %orig;
     PSGSyncEye((UIViewController *)self, @"viewDidLoad");
+    PSGSyncBell((UIViewController *)self, @"viewDidLoad");
 }
 
 // The title view is built during layout, so the stack only exists here.
 - (void)viewDidLayoutSubviews {
     %orig;
     PSGSyncEye((UIViewController *)self, @"layout");
+    PSGSyncBell((UIViewController *)self, @"layout");
 }
 
 %end
@@ -334,6 +448,7 @@ static void PSGSyncEye(UIViewController *host, NSString *pass) {
 
     syncing = YES;
     PSGSyncEye((UIViewController *)owner, @"navbar");
+    PSGSyncBell((UIViewController *)owner, @"navbar");
     syncing = NO;
 }
 

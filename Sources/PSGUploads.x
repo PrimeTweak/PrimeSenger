@@ -57,4 +57,33 @@
                  forKey:@"hd uploads"];
 }
 
+
+// The View once control in the picker. Measured on 575:
+//
+//   _didTapViewOnceToggle                    v16@0:8      14 instructions, 6 calls
+//   viewOnceToggleTapHandlerWithIsToggleOn:  v20@0:8B16
+//
+// Both are covered: the tap is swallowed, and the handler is forced to NO in
+// case the host reaches it another way. Which one fired is recorded.
+- (void)_didTapViewOnceToggle {
+    [PRMDebug noteHook:@"view once send"];
+    if ([PRMPrefs isEnabled:PRMKeyBlockViewOnceSend]) {
+        [PRMDebug noteAction:@"view once send"];
+        [PRMDebug setStatus:@"tap swallowed" forKey:@"view once send"];
+        return;
+    }
+    %orig;
+}
+
+- (void)viewOnceToggleTapHandlerWithIsToggleOn:(BOOL)on {
+    [PRMDebug noteHook:@"view once send"];
+    if ([PRMPrefs isEnabled:PRMKeyBlockViewOnceSend] && on) {
+        [PRMDebug noteAction:@"view once send"];
+        [PRMDebug setStatus:@"handler forced off" forKey:@"view once send"];
+        %orig(NO);
+        return;
+    }
+    %orig;
+}
+
 %end

@@ -106,6 +106,12 @@ BOOL PSGCensorGate(BOOL original, NSString *name) {
     return PSGCensorGate(original, @"censored");
 }
 
+// Twelfth gate. Its action, viewMediaInThread, is measured present on 575.
+- (BOOL)canViewMediaInThread {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"canViewInThread");
+}
+
 // A View once photo or video burns when the host marks it as opened, and
 // this is the method that marks it. Swallowing the call leaves the media
 // unmarked, so it stays openable.
@@ -127,6 +133,25 @@ BOOL PSGCensorGate(BOOL original, NSString *name) {
         return;
     }
     [PRMDebug noteAction:@"view once"];
+}
+
+%end
+
+#pragma mark - Meta AI in the media menu
+
+// The media menu offers Ask Meta AI through this gate. Measured on 575:
+// B16@0:8, 7 instructions, 1 call. Closed rather than opened, like the
+// censorship gate above.
+%hook LSThreadMediaViewerBucketViewController
+
+- (BOOL)canOpenMetaAIChat {
+    BOOL original = %orig;
+    [PRMDebug noteHook:@"meta ai media"];
+    if (![PRMPrefs isEnabled:PRMKeyHideMetaAIMedia]) return original;
+    if (original) [PRMDebug noteAction:@"meta ai media"];
+    [PRMDebug setStatus:[NSString stringWithFormat:@"host %@ -> hidden", original ? @"offered" : @"absent"]
+                 forKey:@"meta ai media"];
+    return NO;
 }
 
 %end

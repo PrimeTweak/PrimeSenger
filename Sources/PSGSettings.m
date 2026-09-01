@@ -331,7 +331,8 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
     // is. The section title matches the tab it acts on.
     NSMutableArray<NSString *> *titles = [@[@"Conversations", @"Chat list",
                                             @"Notifications", @"Stories",
-                                            @"Media", @"Tab bar",
+                                            @"Media viewer", @"Playback",
+                                            @"Meta AI", @"Tab bar",
                                             @"Diagnostics"] mutableCopy];
 
     NSMutableArray *sections = [@[
@@ -342,6 +343,8 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
                            thirdKey:PRMKeyReadOnReply thirdTitle:@"On reply"],
           [PSGSettingsRow switchRow:@"Typing indicator" symbol:@"ellipsis.bubble.fill"
                                 key:PRMKeyHideTypingIndicator inverted:NO],
+          [PSGSettingsRow switchRow:@"Active status" symbol:@"circle.fill"
+                                key:PRMKeyAppearOffline inverted:NO],
           [PSGSettingsRow switchRow:@"Quick reaction" symbol:@"face.smiling.fill"
                                 key:PRMKeyHideQuickReaction inverted:NO],
           [PSGSettingsRow switchRow:@"Keep keyboard closed"
@@ -350,24 +353,26 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
           [PSGSettingsRow switchRow:@"Confirm before calling" symbol:@"phone.fill"
                                 key:PRMKeyCallConfirmation inverted:NO],
           [PSGSettingsRow switchRow:@"HD uploads" symbol:@"arrow.up.circle.fill"
-                                key:PRMKeyUploadHD inverted:NO]],
+                                key:PRMKeyUploadHD inverted:NO],
+          [PSGSettingsRow switchRow:@"View once toggle" symbol:@"1.circle"
+                                key:PRMKeyBlockViewOnceSend inverted:NO]],
 
         @[[PSGSettingsRow switchRow:@"Stories tray" symbol:@"person.3.fill"
                                 key:PRMKeyHideStoriesTray inverted:NO],
           [PSGSettingsRow switchRow:@"People you may know" symbol:@"person.2.fill"
-                                key:PRMKeyHidePeopleYouMayKnow inverted:NO],
-          [PSGSettingsRow switchRow:@"Meta AI in search" symbol:@"magnifyingglass"
-                                key:PRMKeyHideMetaAI inverted:NO],
-          [PSGSettingsRow switchRow:@"Meta AI button" symbol:@"sparkles"
-                                key:PRMKeyHideMetaAIButton inverted:NO]],
+                                key:PRMKeyHidePeopleYouMayKnow inverted:NO]],
 
         @[[PSGSettingsRow switchRow:@"Friend suggestions" symbol:@"bell.fill"
-                                key:PRMKeyHidePymkInNotifications inverted:NO]],
+                                key:PRMKeyHidePymkInNotifications inverted:NO],
+          [PSGSettingsRow switchRow:@"Silenced chats" symbol:@"bell.slash.fill"
+                                key:PRMKeySilencedChats inverted:NO]],
 
         @[[PSGSettingsRow switchRow:@"Story views" symbol:@"eye.circle.fill"
                                 key:PRMKeyStoriesAnonymously inverted:NO],
           [PSGSettingsRow switchRow:@"Reply bar" symbol:@"bubble.left.fill"
-                                key:PRMKeyHideStoryReplyBar inverted:NO]],
+                                key:PRMKeyHideStoryReplyBar inverted:NO],
+          [PSGSettingsRow switchRow:@"Sound" symbol:@"speaker.wave.2.fill"
+                                key:PRMKeyStorySound inverted:NO]],
 
         @[[PSGSettingsRow switchRow:@"Media actions"
                              symbol:@"square.and.arrow.down.fill"
@@ -380,9 +385,24 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
                              symbol:@"exclamationmark.triangle.fill"
                                 key:PRMKeyRevealCensored inverted:NO],
           [PSGSettingsRow switchRow:@"View once media" symbol:@"1.circle.fill"
-                                key:PRMKeyViewOnce inverted:NO],
-          [PSGSettingsRow switchRow:@"Loop videos" symbol:@"repeat"
-                                key:PRMKeyLoopVideos inverted:NO]],
+                                key:PRMKeyViewOnce inverted:NO]],
+
+        @[[PSGSettingsRow switchRow:@"Loop videos" symbol:@"repeat"
+                                key:PRMKeyLoopVideos inverted:NO],
+          [PSGSettingsRow switchRow:@"Sound on open" symbol:@"speaker.wave.2.fill"
+                                key:PRMKeySoundOnOpen inverted:NO],
+          [PSGSettingsRow switchRow:@"Speed" symbol:@"speedometer"
+                                key:PRMKeySpeed
+                             auxKey:PRMKeySpeed15
+                         auxOnTitle:@"1.5x" auxOffTitle:@"1x"
+                           thirdKey:PRMKeySpeed2 thirdTitle:@"2x"]],
+
+        @[[PSGSettingsRow switchRow:@"In search" symbol:@"magnifyingglass"
+                                key:PRMKeyHideMetaAI inverted:NO],
+          [PSGSettingsRow switchRow:@"Chat list button" symbol:@"sparkles"
+                                key:PRMKeyHideMetaAIButton inverted:NO],
+          [PSGSettingsRow switchRow:@"Media menu" symbol:@"photo.fill"
+                                key:PRMKeyHideMetaAIMedia inverted:NO]],
 
         @[[PSGSettingsRow switchRow:@"Liquid Glass" symbol:@"drop.fill"
                                 key:PRMKeyGlassTabBar inverted:NO],
@@ -413,9 +433,12 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
             @"Nobody sees when you open a chat. Tap the pill to cycle: Off, Manual "
              "(an eye in the header sends one receipt when you tap it), On reply "
              "(the same eye, plus a receipt that goes out by itself whenever you "
-             "send a message)."],
+             "send a message or a reaction)."],
           @[@"Typing indicator",
             @"The three dots are never sent while you type. You still see theirs."],
+          @[@"Active status",
+            @"Others no longer see you as active. You still see who is active. "
+             "Not verified against the server yet: check with a second account."],
           @[@"Quick reaction",
             @"The emoji beside an empty field becomes a send button, so a mis-tap "
              "no longer fires a reaction."],
@@ -427,28 +450,33 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
              "anyone."],
           @[@"HD uploads",
             @"Turns HD on in Messenger's own photo picker every time it opens. "
-             "Photos sent through the system picker are not affected."]],
+             "Photos sent through the system picker are not affected."],
+          @[@"View once toggle",
+            @"The View once control in the photo picker can no longer be turned "
+             "on, so nothing you send can burn after one look."]],
 
         @[@[@"Stories tray",
             @"Removes the row of story circles above the chat list."],
           @[@"People you may know",
-            @"Removes the contact suggestions Messenger inserts into the chat list."],
-          @[@"Meta AI in search",
-            @"The search field says Search instead of offering Meta AI."],
-          @[@"Meta AI button",
-            @"Removes the round Meta AI button floating over the chat list."]],
+            @"Removes the contact suggestions Messenger inserts into the chat list."]],
 
         @[@[@"Friend suggestions",
-            @"Removes contact suggestions from the notifications tab."]],
+            @"Removes contact suggestions from the notifications tab."],
+          @[@"Silenced chats",
+            @"Puts a bell in the chat header. Tap it to stop that chat's "
+             "notifications on this phone only; Messenger is not told, so the "
+             "chat never shows as muted."]],
 
         @[@[@"Story views",
             @"Watch a story without the sender being told."],
           @[@"Reply bar",
-            @"Removes the reply field under a story."]],
+            @"Removes the reply field under a story."],
+          @[@"Sound",
+            @"Story videos start with sound instead of muted."]],
 
         @[@[@"Media actions",
             @"Opens every action Messenger greys out on a photo or video: save, "
-             "share, forward, copy, Info, and six more."],
+             "share, forward, copy, Info, View in chat, and six more."],
           @[@"Save button",
             @"Adds a save button to pictures Messenger gives you no way to keep: "
              "story photos, disappearing photos, and profile pictures."],
@@ -458,9 +486,21 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
             @"Shows media hidden behind a warning, without the tap to reveal."],
           @[@"View once media",
             @"A View once photo stays openable instead of burning the first time "
-             "you look at it."],
-          @[@"Loop videos",
-            @"A video restarts instead of stopping at the end."]],
+             "you look at it."]],
+
+        @[@[@"Loop videos",
+            @"A video restarts instead of stopping at the end."],
+          @[@"Sound on open",
+            @"A video opened full screen starts with sound instead of muted."],
+          @[@"Speed",
+            @"Videos play faster. Tap the pill to choose 1.5x or 2x."]],
+
+        @[@[@"In search",
+            @"The search field says Search instead of offering Meta AI."],
+          @[@"Chat list button",
+            @"Removes the round Meta AI button floating over the chat list."],
+          @[@"Media menu",
+            @"Removes Ask Meta AI from the media menu."]],
 
         @[@[@"Liquid Glass",
             @"Replaces Messenger's tab bar with the system one, which carries the "

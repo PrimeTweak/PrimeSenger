@@ -32,4 +32,22 @@
     %orig;
 }
 
+
+// Story videos start muted because this answers YES. Measured on 575:
+// B16@0:8, 29 instructions, 8 calls -- it consults conditions before
+// answering, and its verdict is replaced rather than its body read.
+- (BOOL)shouldDefaultVideoToMute {
+    BOOL original = %orig;
+    [PRMDebug noteHook:@"story sound"];
+    if (![PRMPrefs isEnabled:PRMKeyStorySound]) {
+        [PRMDebug setStatus:[NSString stringWithFormat:@"off, host says %@", original ? @"muted" : @"sound"]
+                     forKey:@"story sound"];
+        return original;
+    }
+    if (original) [PRMDebug noteAction:@"story sound"];
+    [PRMDebug setStatus:[NSString stringWithFormat:@"host %@ -> sound", original ? @"muted" : @"sound"]
+                 forKey:@"story sound"];
+    return NO;
+}
+
 %end
