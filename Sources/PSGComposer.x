@@ -207,3 +207,51 @@ static void PSGDressEmojiAsSend(UIView *view) {
 }
 
 %end
+
+#pragma mark - Read on reaction
+
+// A reaction is a reply too. Two paths on this build, both measured:
+//
+//   -[MSGFacebookReactionView didTap]        v16@0:8     a pick in the tray
+//   -[MSGMessageRowCell viewDidDoubleTap:]   v24@0:8@16  double tap to like
+//
+// The reaction itself is sent through a block the tray is built with, not
+// through a method, so the two user gestures are watched instead. Each
+// reuses the same receipt primitive as the send hook above, and the same
+// pill state, so nothing fires unless On reply is the chosen mode.
+
+static void PSGReceiptForReaction(NSString *source) {
+    [PRMDebug noteHook:@"read on reaction"];
+    if (![PRMPrefs isEnabled:PRMKeyReadOnReply]) return;
+
+    id list = [PSGReadReceipts liveController];
+    if (list == nil) {
+        [PRMDebug setStatus:[NSString stringWithFormat:@"%@: no thread on screen", source]
+                     forKey:@"read on reaction"];
+        return;
+    }
+
+    [PRMDebug noteAction:@"read on reaction"];
+    BOOL sent = [PSGReadReceipts sendReceiptOn:list];
+    [PRMDebug setStatus:[NSString stringWithFormat:@"%@: %@", source,
+                         sent ? @"receipt sent" : @"flag unreachable"]
+                 forKey:@"read on reaction"];
+}
+
+%hook MSGFacebookReactionView
+
+- (void)didTap {
+    %orig;
+    PSGReceiptForReaction(@"tray");
+}
+
+%end
+
+%hook MSGMessageRowCell
+
+- (void)viewDidDoubleTap:(id)view {
+    %orig;
+    PSGReceiptForReaction(@"double tap");
+}
+
+%end
