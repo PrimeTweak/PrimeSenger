@@ -31,6 +31,16 @@
 static const NSInteger kPSGSaveButtonTag = 0x50534753;
 static const char kPSGCarrierKey;
 
+// The picture the button belongs to, held weakly. An unretained association
+// would leave a dangling pointer if the host replaced its image view while
+// the button stayed, and the next tap would crash on it.
+@interface PSGWeakBox : NSObject
+@property (nonatomic, weak) UIView *view;
+@end
+
+@implementation PSGWeakBox
+@end
+
 // The picture last shown by a screen this file put a button on. Held weakly
 // so a dismissed screen leaves nothing behind.
 static __weak UIView *gLastCarrier = nil;
@@ -108,8 +118,9 @@ static UIView *PSGImageBearingView(UIView *root, UIImage **out) {
 // Bound at creation to the view it was placed on, rather than searching the
 // screen again at tap time.
 - (void)saveTapped:(UIButton *)sender {
-    UIView *carrier = objc_getAssociatedObject(sender, &kPSGCarrierKey);
-    if (carrier == nil) {
+    PSGWeakBox *box = objc_getAssociatedObject(sender, &kPSGCarrierKey);
+    UIView *carrier = box.view;
+    if (carrier == nil || ![carrier respondsToSelector:@selector(image)]) {
         [PRMDebug setStatus:@"button lost its view" forKey:@"save media"];
         return;
     }
@@ -137,7 +148,9 @@ static void PSGAddSaveButton(UIView *root, UIView *carrier, NSString *key) {
     save.layer.cornerRadius = 22;
     [save setImage:[UIImage systemImageNamed:@"square.and.arrow.down"]
           forState:UIControlStateNormal];
-    objc_setAssociatedObject(save, &kPSGCarrierKey, carrier, OBJC_ASSOCIATION_ASSIGN);
+    PSGWeakBox *box = [[PSGWeakBox alloc] init];
+    box.view = carrier;
+    objc_setAssociatedObject(save, &kPSGCarrierKey, box, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [save addTarget:[PSGMediaSaver shared]
              action:@selector(saveTapped:)
    forControlEvents:UIControlEventTouchUpInside];
@@ -213,6 +226,19 @@ static Class PSGProfileViewerClass(void) {
 // here. The class is forward declared, so self is held as id and its ivar is
 // read through the runtime rather than messaged.
 %hook LSMediaPhotoViewController
+
+// Not a saving concern, but this class is hooked here and Logos allows one
+// block per class per file. Measured on 575: the photo viewer handles a
+// screenshot itself, 7 instructions, 4 calls.
+- (void)_handleUserDidTakeScreenshot:(id)note {
+    [PRMDebug noteHook:@"screenshot photo"];
+    if ([PRMPrefs isEnabled:PRMKeyBlockScreenshotNotice]) {
+        [PRMDebug noteAction:@"screenshot photo"];
+        [PRMDebug setStatus:@"photo notice swallowed" forKey:@"screenshot photo"];
+        return;
+    }
+    %orig;
+}
 
 - (void)viewDidLayoutSubviews {
     %orig;

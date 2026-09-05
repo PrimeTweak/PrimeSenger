@@ -45,3 +45,23 @@
 }
 
 %end
+
+// The transport below the plugin, measured as the last step before the
+// network: v24@0:8q16, 23 instructions. Cut here as well, so a caller that
+// reaches the transport without passing through the plugin is caught too.
+%hook MSGPresenceUPCTransport
+
+- (void)reportAppState:(long long)state {
+    [PRMDebug noteHook:@"presence transport"];
+    if ([PRMPrefs isEnabled:PRMKeyAppearOffline]) {
+        [PRMDebug noteAction:@"presence transport"];
+        [PRMDebug setStatus:[NSString stringWithFormat:@"state %lld SWALLOWED", state]
+                     forKey:@"presence transport"];
+        return;
+    }
+    [PRMDebug setStatus:[NSString stringWithFormat:@"state %lld passed", state]
+                 forKey:@"presence transport"];
+    %orig;
+}
+
+%end

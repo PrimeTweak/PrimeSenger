@@ -37,7 +37,7 @@ static BOOL gCallConfirmed = NO;
                                               style:UIAlertActionStyleDefault
                                             handler:^(UIAlertAction *action) {
         id button = target;
-        if (button == nil) return;
+        if (button == nil || ![button respondsToSelector:@selector(handleButtonTap)]) return;
         gCallConfirmed = YES;
         ((void (*)(id, SEL))objc_msgSend)(button, @selector(handleButtonTap));
     }]];

@@ -433,9 +433,11 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
             @"Nobody sees when you open a chat. Tap the pill to cycle: Off, Manual "
              "(an eye in the header sends one receipt when you tap it), On reply "
              "(the same eye, plus a receipt that goes out by itself whenever you "
-             "send a message or a reaction)."],
+             "send a message or a reaction). In Off and Manual, replying does "
+             "not mark the chat as read either."],
           @[@"Typing indicator",
-            @"The three dots are never sent while you type. You still see theirs."],
+            @"The three dots are never sent while you type, in regular and "
+             "encrypted chats alike. You still see theirs."],
           @[@"Active status",
             @"Others no longer see you as active. You still see who is active. "
              "Not verified against the server yet: check with a second account."],
@@ -481,7 +483,8 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
             @"Adds a save button to pictures Messenger gives you no way to keep: "
              "story photos, disappearing photos, and profile pictures."],
           @[@"Screenshot alerts",
-            @"The sender is not told when you screenshot a disappearing photo."],
+            @"The sender is not told when you screenshot or record a disappearing "
+             "photo, a photo opened full screen, or an encrypted chat."],
           @[@"Censored media",
             @"Shows media hidden behind a warning, without the tap to reveal."],
           @[@"View once media",

@@ -51,3 +51,22 @@
 }
 
 %end
+
+#pragma mark - Impression probe
+
+// A second channel that might feed the seen list, measured on 575 at 18
+// instructions and 10 calls. Nothing is swallowed: it is counted, so a
+// second account can say whether the seen hook alone was enough.
+%hook LSStoryViewerContentController
+
+- (void)startImpressionTrackingWithAuthDataContext:(id)context
+                             impressionTrackingParams:(id)params
+                             storyBucketViewController:(id)controller {
+    [PRMDebug noteHook:@"story impression"];
+    [PRMDebug setStatus:[NSString stringWithFormat:@"started with %@",
+                         params ? NSStringFromClass([params class]) : @"nil"]
+                 forKey:@"story impression"];
+    %orig;
+}
+
+%end
