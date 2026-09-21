@@ -439,8 +439,9 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
             @"The three dots are never sent while you type, in regular and "
              "encrypted chats alike. You still see theirs."],
           @[@"Active status",
-            @"Others no longer see you as active. You still see who is active. "
-             "Not verified against the server yet: check with a second account."],
+            @"Turn Messenger's own Active Status off first. This then tells "
+             "Meta the setting is still on, so who is active keeps showing for "
+             "you. Check with a second account."],
           @[@"Quick reaction",
             @"The emoji beside an empty field becomes a send button, so a mis-tap "
              "no longer fires a reaction."],
