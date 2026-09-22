@@ -1,224 +1,54 @@
-// Active status.
+// Active status probe.
 //
-// Measured across three builds and two accounts:
+// Six passes closed the ObjC report paths, the local cache and the display
+// gate. Three routes were never tested and are measured here at once, plus
+// every presence surface, so one reading settles all of them.
 //
-//   The server enforces the trade-off. With the native switch off it reported
-//   "off" and nothing came back (presence arrives: never). Reporting "on"
-//   instead brought others back (presence arrives: 3) -- and the server
-//   synced "on" to the phone, which flipped the local cache to 1, restarted
-//   the ObjC publishers (presence report: 1 -> 3) and pinned the native
-//   switch on.
+// Route A, per-platform presence. Meta tracks the setting per platform
+// (FBIOS, DESKTOP, FACEBOOK_WEB). The query and mutation are GraphQL data
+// models with no instance methods to hook, so the effect is read from what
+// arrives: if presence keeps coming while this device reports inactive,
+// another platform is keeping the feed open.
 //
-//   The transport is the bridge to the C++ presence manager: its ivar
-//   _presenceManager is a shared_ptr<facebook::presence::UnifiedPresenceManager>,
-//   so reportAppState: on the transport is where foreground reaches it.
+// Route B, on-demand fetch. Measured present:
+//   -[MSGPresenceUtilsUserScopedPlugin
+//       MSGPresenceUtilsProvider_MSGOnDemandFetchContactsPresence:]  v24@0:8@16
+//   -[MSGThreadViewPresenceFetchManager issueOnDemandPresenceFetch]  v16@0:8
+// The switch fires an explicit fetch on every thread open; the reading says
+// whether the server answers one while the native toggle is off.
 //
-//   The local cache lives in LSPresenceUserScopedPlugin._cachedPresenceEnabled
-//   (NSNumber), refreshed by _handleActiveStatusChangeNotification:, read by
-//   _isEnabled some 150 times a session. It is what the ObjC publishers
-//   consult.
+// Route C, background state. Measured:
+//   -[FBBackgroundStateProvider isAppBackgrounded]  B16@0:8
+//   -[FBBackgroundStateProvider _didEnterBackground] / _willEnterForeground
+// Forcing backgrounded to YES was assumed to cut messaging; never verified.
+// Here it is only reported, with a received-message counter alongside, so
+// the cost is measured before anything is forced.
 //
-// So the stable state to aim for is: server told "on", phone kept "off".
-// With the switch on, this build does all of it at once, each part recorded:
-//
-//   1. the three reports to the server say "on"
-//   2. the sync landing is watched and the local cache pinned to NO right
-//      after it, so the plugin never learns the server flipped it
-//   3. both app-state reports are swallowed, so nothing reaches the presence
-//      manager; _isEnabled is left alone, since forcing it hid the display
-//
-// Measured on the pass that reached this state: presence arrived while the
-// phone stayed silent, and the dots were hidden only by the forced
-// _isEnabled, which is why it is no longer forced.
-//
-// The native pause is watched too: if pausing keeps the server on while the
-// phone stops publishing, Meta already ships the mechanism and a pause that
-// never expires is the whole feature.
+// Nothing is swallowed and nothing is forced. Every hook records. The switch
+// only arms the on-demand fetch on thread open, which is safe to observe.
 
 #import "PRMPrefs.h"
 #import "PRMDebug.h"
 #import <UIKit/UIKit.h>
-#import <objc/runtime.h>
-
-static BOOL PSGLie(void) {
-    return [PRMPrefs isEnabled:PRMKeyAppearOffline];
-}
+#import <objc/message.h>
 
 static NSString *PSGShape(id value) {
     if (value == nil) return @"nil";
     if ([value isKindOfClass:[NSNumber class]]) return [NSString stringWithFormat:@"%@", value];
+    if ([value isKindOfClass:[NSString class]]) return value;
+    if ([value isKindOfClass:[NSArray class]])
+        return [NSString stringWithFormat:@"[%lu]", (unsigned long)[(NSArray *)value count]];
     return NSStringFromClass([value class]);
 }
 
-#pragma mark - The local cache
-
-%hook LSPresenceUserScopedPlugin
-
-// Where the server's value lands. Recorded, passed through, and the cache
-// pinned back to NO right after so the phone keeps "off".
-- (void)_handleActiveStatusChangeNotification:(id)note {
-    %orig;
-    [PRMDebug noteHook:@"presence sync"];
-
-    id plugin = self;
-    Ivar slot = class_getInstanceVariable(object_getClass(plugin), "_cachedPresenceEnabled");
-    id cached = slot ? object_getIvar(plugin, slot) : nil;
-    NSString *before = PSGShape(cached);
-
-    if (PSGLie() && slot != NULL) {
-        object_setIvar(plugin, slot, @NO);
-        [PRMDebug noteAction:@"presence sync"];
-    }
-    [PRMDebug setStatus:[NSString stringWithFormat:@"note %@ | cache %@%@",
-                         PSGShape(note), before, PSGLie() ? @" -> 0 pinned" : @""]
-                 forKey:@"presence sync"];
-}
-
-// Observed, no longer forced. Forcing it to NO hid others' presence on
-// screen: the display reads this too, and it obeyed the forced value while
-// the server was sending (presence arrives: 1). The publishers do not need
-// the lie, their two reports below are swallowed outright.
-- (BOOL)_isEnabled {
-    BOOL original = %orig;
-    [PRMDebug noteHook:@"ls presence read"];
-    [PRMDebug setStatus:[NSString stringWithFormat:@"%d passed", original]
-                 forKey:@"ls presence read"];
-    return original;
-}
-
-%end
-
-#pragma mark - The plugin
-
-%hook MSGPresenceUtilsUserScopedPlugin
-
-- (void)MSGPresenceUtilsProvider_MSGReportUserPresenceSetting:(id)setting {
-    [PRMDebug noteHook:@"setting report"];
-    if (PSGLie() && [setting isKindOfClass:[NSNumber class]]) {
-        [PRMDebug noteAction:@"setting report"];
-        [PRMDebug setStatus:[NSString stringWithFormat:@"plugin %@ -> YES", PSGShape(setting)]
-                     forKey:@"setting report"];
-        %orig(@YES);
-        return;
-    }
-    [PRMDebug setStatus:[NSString stringWithFormat:@"plugin %@ passed", PSGShape(setting)]
-                 forKey:@"setting report"];
-    %orig;
-}
-
-- (void)MSGPresenceUtilsProvider_MSGReportAppState:(id)state {
-    [PRMDebug noteHook:@"presence report"];
-    if (PSGLie()) {
-        [PRMDebug noteAction:@"presence report"];
-        [PRMDebug setStatus:[NSString stringWithFormat:@"state %@ SWALLOWED", PSGShape(state)]
-                     forKey:@"presence report"];
-        return;
-    }
-    [PRMDebug setStatus:[NSString stringWithFormat:@"state %@ passed", PSGShape(state)]
-                 forKey:@"presence report"];
-    %orig;
-}
-
-- (BOOL)MSGPresenceUtilsProvider_MSGGlobalMessengerActiveStatusSettingIsEnabled:(id)argument {
-    BOOL original = %orig;
-    [PRMDebug noteHook:@"setting read"];
-    [PRMDebug setStatus:[NSString stringWithFormat:@"%d arg %@", original, PSGShape(argument)]
-                 forKey:@"setting read"];
-    return original;
-}
-
-// The pause, watched. Expiry is a timestamp; a pause in force reads as a
-// future one. With the switch on it is told never to expire, so a native
-// pause the person starts becomes permanent.
-- (BOOL)MSGPresenceUtilsProvider_MSGActiveStatusPauseExpireIfNeeded {
-    BOOL original = %orig;
-    [PRMDebug noteHook:@"pause"];
-    [PRMDebug setStatus:[NSString stringWithFormat:@"expire %d%@", original,
-                         PSGLie() ? @" -> 0 held" : @""]
-                 forKey:@"pause"];
-    return PSGLie() ? NO : original;
-}
-
-- (id)MSGPresenceUtilsProvider_MSGActiveStatusPauseGetExpiry {
-    id expiry = %orig;
-    [PRMDebug setStatus:[NSString stringWithFormat:@"expiry %@", PSGShape(expiry)]
-                 forKey:@"pause expiry"];
-    return expiry;
-}
-
-- (BOOL)MSGPresenceUtilsProvider_MSGActiveStatusPauseStoreExpiry:(double)expiry {
-    BOOL original = %orig;
-    [PRMDebug noteHook:@"pause store"];
-    [PRMDebug setStatus:[NSString stringWithFormat:@"stored %.0f -> %d", expiry, original]
-                 forKey:@"pause store"];
-    return original;
-}
-
-%end
-
-#pragma mark - The transport
-
-%hook MSGPresenceUPCTransport
-
-- (void)reportPresenceSetting:(BOOL)enabled coPresenceEnabled:(BOOL)coPresence {
-    [PRMDebug noteHook:@"setting report"];
-    if (PSGLie()) {
-        [PRMDebug noteAction:@"setting report"];
-        [PRMDebug setStatus:[NSString stringWithFormat:@"transport %d/%d -> YES/%d",
-                             enabled, coPresence, coPresence]
-                     forKey:@"setting report"];
-        %orig(YES, coPresence);
-        return;
-    }
-    [PRMDebug setStatus:[NSString stringWithFormat:@"transport %d/%d passed", enabled, coPresence]
-                 forKey:@"setting report"];
-    %orig;
-}
-
-- (void)reportAppState:(long long)state {
-    [PRMDebug noteHook:@"presence transport"];
-    if (PSGLie()) {
-        [PRMDebug noteAction:@"presence transport"];
-        [PRMDebug setStatus:[NSString stringWithFormat:@"state %lld SWALLOWED", state]
-                     forKey:@"presence transport"];
-        return;
-    }
-    [PRMDebug setStatus:[NSString stringWithFormat:@"state %lld passed", state]
-                 forKey:@"presence transport"];
-    %orig;
-}
-
-%end
-
-#pragma mark - The GraphQL report
-
-%hook FBUpdatePerPlatformPresenceSettingsData
-
-+ (id)dataWithActorId:(id)actor isActive:(BOOL)active platform:(id)platform {
-    [PRMDebug noteHook:@"setting report"];
-    if (PSGLie()) {
-        [PRMDebug noteAction:@"setting report"];
-        [PRMDebug setStatus:[NSString stringWithFormat:@"graphql %d -> YES on %@", active, platform]
-                     forKey:@"setting report"];
-        id result = %orig(actor, YES, platform);
-        return result;
-    }
-    [PRMDebug setStatus:[NSString stringWithFormat:@"graphql %d passed on %@", active, platform]
-                 forKey:@"setting report"];
-    id result = %orig;
-    return result;
-}
-
-%end
-
-#pragma mark - What arrives
+#pragma mark - What arrives (the answer to every route)
 
 %hook MSGThreadPresenceObserver
 
 - (void)setCurrentStatusForThread:(id)status threadQueryKey:(id)key {
     %orig;
     [PRMDebug noteHook:@"presence arrives"];
-    [PRMDebug setStatus:[NSString stringWithFormat:@"thread status %@", PSGShape(status)]
+    [PRMDebug setStatus:[NSString stringWithFormat:@"status %@", PSGShape(status)]
                  forKey:@"presence arrives"];
 }
 
@@ -229,10 +59,102 @@ static NSString *PSGShape(id value) {
 - (void)updateActiveNowListWithModels:(id)models {
     %orig;
     [PRMDebug noteHook:@"active now list"];
-    [PRMDebug setStatus:[NSString stringWithFormat:@"%lu models",
-                         (unsigned long)([models isKindOfClass:[NSArray class]]
-                                         ? [(NSArray *)models count] : 0)]
+    [PRMDebug setStatus:[NSString stringWithFormat:@"%@ models", PSGShape(models)]
                  forKey:@"active now list"];
+}
+
+%end
+
+#pragma mark - Route B, on-demand fetch
+
+%hook MSGPresenceUtilsUserScopedPlugin
+
+- (void)MSGPresenceUtilsProvider_MSGOnDemandFetchContactsPresence:(id)arg {
+    [PRMDebug noteHook:@"ondemand fetch"];
+    [PRMDebug setStatus:[NSString stringWithFormat:@"called with %@", PSGShape(arg)]
+                 forKey:@"ondemand fetch"];
+    %orig;
+}
+
+// Still recorded, no longer swallowed, so the report path stays visible.
+- (void)MSGPresenceUtilsProvider_MSGReportAppState:(id)state {
+    [PRMDebug noteHook:@"presence report"];
+    [PRMDebug setStatus:[NSString stringWithFormat:@"state %@ passed", PSGShape(state)]
+                 forKey:@"presence report"];
+    %orig;
+}
+
+- (BOOL)MSGPresenceUtilsProvider_MSGGlobalMessengerActiveStatusSettingIsEnabled:(id)arg {
+    BOOL original = %orig;
+    [PRMDebug noteHook:@"setting read"];
+    [PRMDebug setStatus:[NSString stringWithFormat:@"%d", original] forKey:@"setting read"];
+    return original;
+}
+
+%end
+
+%hook MSGThreadViewPresenceFetchManager
+
+- (void)issueOnDemandPresenceFetch {
+    [PRMDebug noteHook:@"fetch issued"];
+    %orig;
+}
+
+%end
+
+// The switch arms an explicit fetch each time a thread opens, so the reading
+// shows whether the server answers one while the native toggle is off.
+%hook MSGThreadViewController
+
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    if (![PRMPrefs isEnabled:PRMKeyAppearOffline]) return;
+
+    id controller = self;
+    id manager = nil;
+    Ivar slot = class_getInstanceVariable(object_getClass(controller), "_presenceFetchManager");
+    if (slot != NULL) manager = object_getIvar(controller, slot);
+
+    if ([manager respondsToSelector:@selector(issueOnDemandPresenceFetch)]) {
+        [PRMDebug noteAction:@"ondemand fetch"];
+        [PRMDebug setStatus:@"forced on thread open" forKey:@"ondemand fetch"];
+        ((void (*)(id, SEL))objc_msgSend)(manager, @selector(issueOnDemandPresenceFetch));
+    } else {
+        [PRMDebug setStatus:@"no fetch manager ivar" forKey:@"ondemand fetch"];
+    }
+}
+
+%end
+
+#pragma mark - Route C, background state
+
+%hook FBBackgroundStateProvider
+
+// Only read. The received-message counter below says whether messaging would
+// survive if this were later forced.
+- (BOOL)isAppBackgrounded {
+    BOOL original = %orig;
+    [PRMDebug noteHook:@"background state"];
+    [PRMDebug setStatus:[NSString stringWithFormat:@"%d", original]
+                 forKey:@"background state"];
+    return original;
+}
+
+%end
+
+#pragma mark - The messaging cost meter
+
+// Every inbound message increments this. Read it across a session with the
+// switch on: if it keeps climbing, the real-time channel is alive.
+// Every message row generated, inbound included, so a climbing count over a
+// session with the switch on means the real-time channel is alive.
+%hook MSGMessageListViewController
+
+- (void)messageRowDidGenerate:(id)row
+               deliveryStatus:(long long)status
+          isUpdatedMessageRow:(BOOL)updated {
+    if (!updated) [PRMDebug noteHook:@"message row"];
+    %orig;
 }
 
 %end
