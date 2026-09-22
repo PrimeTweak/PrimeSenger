@@ -1,165 +1,172 @@
 // Active status.
 //
-// The first attempt swallowed the app-state report on the ObjC side, and a
-// second account still saw the green dot. Measured since: the MQTT client in
-// LightSpeedEngine tracks foreground itself in stripped C++
-// ("connection/app_state {foreground %d -> %d}") and cannot be reached from
-// here. Only the host's own setting reliably silences every channel.
+// Measured across three builds and two accounts:
 //
-// So the route is Messenger's own Active Status switch, turned off by the
-// person, plus a lie about it where Meta enforces the trade-off: the client
-// reports the setting to the server on two paths, and the server stops
-// sending others' presence once it hears "off". If the server hears "on"
-// while the client publishes nothing, others may keep arriving.
+//   The server enforces the trade-off. With the native switch off it reported
+//   "off" and nothing came back (presence arrives: never). Reporting "on"
+//   instead brought others back (presence arrives: 3) -- and the server
+//   synced "on" to the phone, which flipped the local cache to 1, restarted
+//   the ObjC publishers (presence report: 1 -> 3) and pinned the native
+//   switch on.
 //
-// Measured on 575, every path this touches or watches:
+//   The transport is the bridge to the C++ presence manager: its ivar
+//   _presenceManager is a shared_ptr<facebook::presence::UnifiedPresenceManager>,
+//   so reportAppState: on the transport is where foreground reaches it.
 //
-//   report to the server
-//     -[MSGPresenceUtilsUserScopedPlugin MSGPresenceUtilsProvider_MSGReportUserPresenceSetting:]  v24@0:8@16
-//     -[MSGPresenceUPCTransport reportPresenceSetting:coPresenceEnabled:]   v24@0:8B16B20
-//     +[FBUpdatePerPlatformPresenceSettingsData dataWithActorId:isActive:platform:]  @36@0:8@16B24@28
-//   the local reading of the setting, shared by publishers and displays
-//     -[MSGPresenceUtilsUserScopedPlugin MSGPresenceUtilsProvider_MSGGlobalMessengerActiveStatusSettingIsEnabled:]  B24@0:8@16
-//     -[MSGGlobalMessengerActiveStatusSettingObserver isEnabled]   B16@0:8
-//     -[LSPresenceUserScopedPlugin _isEnabled]                      B16@0:8
-//   what comes back from the server
-//     -[MSGThreadPresenceObserver setCurrentStatusForThread:threadQueryKey:]  v32@0:8@16@24
-//     -[MSGActiveNowListViewController updateActiveNowListWithModels:]        v24@0:8@16
-//     -[MSGThreadViewPresenceFetchManager issueOnDemandPresenceFetch]        v16@0:8
-//   the app-state reports, observed and no longer swallowed
-//     -[MSGPresenceUtilsUserScopedPlugin MSGPresenceUtilsProvider_MSGReportAppState:]  v24@0:8@16
-//     -[MSGPresenceUPCTransport reportAppState:]   v24@0:8q16
+//   The local cache lives in LSPresenceUserScopedPlugin._cachedPresenceEnabled
+//   (NSNumber), refreshed by _handleActiveStatusChangeNotification:, read by
+//   _isEnabled some 150 times a session. It is what the ObjC publishers
+//   consult.
 //
-// With the switch off everything here only records. With it on, the three
-// reports say "on", and the local reading answers YES to callers that are
-// not publishing, decided from the call stack and recorded so the split can
-// be checked. Whether the server then shows the person as active anyway is
-// the one thing only a second account can answer.
+// So the stable state to aim for is: server told "on", phone kept "off".
+// With the switch on, this build does all of it at once, each part recorded:
+//
+//   1. the three reports to the server say "on"
+//   2. the sync landing is watched and the local cache pinned to NO right
+//      after it, so the plugin never learns the server flipped it
+//   3. _isEnabled answers NO, so the ObjC publishers stay quiet
+//   4. both app-state reports are swallowed as well, so nothing reaches the
+//      presence manager even if a publisher slips through
+//
+// The one question left is whether others' presence still displays while
+// _isEnabled answers NO, since presence arrives regardless. That is read
+// from the screen, and if the dots are gone the display gate is _isEnabled
+// and needs its own split.
+//
+// The native pause is watched too: if pausing keeps the server on while the
+// phone stops publishing, Meta already ships the mechanism and a pause that
+// never expires is the whole feature.
 
 #import "PRMPrefs.h"
 #import "PRMDebug.h"
 #import <UIKit/UIKit.h>
-
-#pragma mark - Recording
-
-// The frames above a hook, reduced to method names. LightSpeedCore keeps its
-// symbols, so the names are real.
-static NSString *PSGCallers(void) {
-    NSArray<NSString *> *frames = [NSThread callStackSymbols];
-    NSMutableArray<NSString *> *names = [NSMutableArray array];
-    NSRegularExpression *pattern =
-        [NSRegularExpression regularExpressionWithPattern:@"[-+]\\[[^\\]]+\\]" options:0 error:NULL];
-    for (NSUInteger i = 2; i < frames.count && names.count < 4; i++) {
-        NSTextCheckingResult *match =
-            [pattern firstMatchInString:frames[i] options:0 range:NSMakeRange(0, frames[i].length)];
-        if (match == nil) continue;
-        NSString *name = [frames[i] substringWithRange:match.range];
-        if ([name containsString:@"_logos_"] || [name containsString:@"PSG"]) continue;
-        [names addObject:name];
-    }
-    return names.count ? [names componentsJoinedByString:@" < "] : @"(no symbols)";
-}
-
-// Distinct caller chains per key, capped, so one reading lists who reads a
-// value rather than how many times the busiest one did.
-static void PSGRememberCallers(NSString *key, NSString *chain) {
-    static NSMutableDictionary<NSString *, NSMutableOrderedSet<NSString *> *> *seen = nil;
-    if (seen == nil) seen = [NSMutableDictionary dictionary];
-    NSMutableOrderedSet<NSString *> *set = seen[key];
-    if (set == nil) { set = [NSMutableOrderedSet orderedSet]; seen[key] = set; }
-    if (set.count < 8) [set addObject:chain];
-    [PRMDebug setStatus:[NSString stringWithFormat:@"%lu chains | %@",
-                         (unsigned long)set.count,
-                         [set.array componentsJoinedByString:@" || "]]
-                 forKey:[key stringByAppendingString:@" callers"]];
-}
-
-// A reader on the publishing side is left alone; anything else is a display
-// and gets the lie. Decided from the chain, which is recorded either way.
-static BOOL PSGChainPublishes(NSString *chain) {
-    static NSArray<NSString *> *marks = nil;
-    if (marks == nil) marks = @[@"Report", @"Publish", @"Transport", @"UPC", @"Mutation",
-                                @"AppState", @"MQTT", @"Sync"];
-    for (NSString *mark in marks) {
-        if ([chain containsString:mark]) return YES;
-    }
-    return NO;
-}
+#import <objc/runtime.h>
 
 static BOOL PSGLie(void) {
     return [PRMPrefs isEnabled:PRMKeyAppearOffline];
 }
 
-// One shared decision for the three local readers.
-static BOOL PSGLocalReading(BOOL original, NSString *key, NSString *extra) {
-    [PRMDebug noteHook:key];
-    NSString *chain = PSGCallers();
-    PSGRememberCallers(key, chain);
+static NSString *PSGShape(id value) {
+    if (value == nil) return @"nil";
+    if ([value isKindOfClass:[NSNumber class]]) return [NSString stringWithFormat:@"%@", value];
+    return NSStringFromClass([value class]);
+}
+
+#pragma mark - The local cache
+
+%hook LSPresenceUserScopedPlugin
+
+// Where the server's value lands. Recorded, passed through, and the cache
+// pinned back to NO right after so the phone keeps "off".
+- (void)_handleActiveStatusChangeNotification:(id)note {
+    %orig;
+    [PRMDebug noteHook:@"presence sync"];
+
+    id plugin = self;
+    Ivar slot = class_getInstanceVariable(object_getClass(plugin), "_cachedPresenceEnabled");
+    id cached = slot ? object_getIvar(plugin, slot) : nil;
+    NSString *before = PSGShape(cached);
+
+    if (PSGLie() && slot != NULL) {
+        object_setIvar(plugin, slot, @NO);
+        [PRMDebug noteAction:@"presence sync"];
+    }
+    [PRMDebug setStatus:[NSString stringWithFormat:@"note %@ | cache %@%@",
+                         PSGShape(note), before, PSGLie() ? @" -> 0 pinned" : @""]
+                 forKey:@"presence sync"];
+}
+
+- (BOOL)_isEnabled {
+    BOOL original = %orig;
+    [PRMDebug noteHook:@"ls presence read"];
+
+    id plugin = self;
+    Ivar slot = class_getInstanceVariable(object_getClass(plugin), "_cachedPresenceEnabled");
+    Ivar cachingSlot = class_getInstanceVariable(object_getClass(plugin), "_isCachingEnabled");
+    id cached = slot ? object_getIvar(plugin, slot) : nil;
+    BOOL caching = NO;
+    if (cachingSlot != NULL) {
+        caching = ((const char *)(__bridge const void *)plugin)[ivar_getOffset(cachingSlot)] != 0;
+    }
 
     if (!PSGLie()) {
-        [PRMDebug setStatus:[NSString stringWithFormat:@"%d%@ | %@", original, extra ?: @"", chain]
-                     forKey:key];
+        [PRMDebug setStatus:[NSString stringWithFormat:@"%d | cache %@ caching %d",
+                             original, PSGShape(cached), caching]
+                     forKey:@"ls presence read"];
         return original;
     }
-    BOOL publishes = PSGChainPublishes(chain);
-    BOOL answer = publishes ? original : YES;
-    if (answer != original) [PRMDebug noteAction:key];
-    [PRMDebug setStatus:[NSString stringWithFormat:@"%d -> %d %@%@ | %@",
-                         original, answer, publishes ? @"publisher" : @"display",
-                         extra ?: @"", chain]
-                 forKey:key];
-    return answer;
+    if (original) [PRMDebug noteAction:@"ls presence read"];
+    [PRMDebug setStatus:[NSString stringWithFormat:@"%d -> 0 | cache %@ caching %d",
+                         original, PSGShape(cached), caching]
+                 forKey:@"ls presence read"];
+    return NO;
 }
+
+%end
 
 #pragma mark - The plugin
 
 %hook MSGPresenceUtilsUserScopedPlugin
 
-- (BOOL)MSGPresenceUtilsProvider_MSGGlobalMessengerActiveStatusSettingIsEnabled:(id)argument {
-    BOOL original = %orig;
-    NSString *shape = argument == nil ? @""
-                    : [NSString stringWithFormat:@" arg=%@", NSStringFromClass([argument class])];
-    return PSGLocalReading(original, @"setting read", shape);
-}
-
-- (BOOL)MSGPresenceUtilsProvider_MSGGlobalMessengerActiveStatusSettingIsEligible {
-    BOOL original = %orig;
-    [PRMDebug setStatus:[NSString stringWithFormat:@"%d", original] forKey:@"setting eligible"];
-    return original;
-}
-
 - (void)MSGPresenceUtilsProvider_MSGReportUserPresenceSetting:(id)setting {
     [PRMDebug noteHook:@"setting report"];
-    NSString *shape = setting == nil ? @"nil"
-                    : [setting isKindOfClass:[NSNumber class]] ? [NSString stringWithFormat:@"%@", setting]
-                    : NSStringFromClass([setting class]);
-    PSGRememberCallers(@"setting report", PSGCallers());
-
     if (PSGLie() && [setting isKindOfClass:[NSNumber class]]) {
         [PRMDebug noteAction:@"setting report"];
-        [PRMDebug setStatus:[NSString stringWithFormat:@"plugin %@ -> YES", shape]
+        [PRMDebug setStatus:[NSString stringWithFormat:@"plugin %@ -> YES", PSGShape(setting)]
                      forKey:@"setting report"];
         %orig(@YES);
         return;
     }
-    [PRMDebug setStatus:[NSString stringWithFormat:@"plugin %@ passed", shape]
+    [PRMDebug setStatus:[NSString stringWithFormat:@"plugin %@ passed", PSGShape(setting)]
                  forKey:@"setting report"];
     %orig;
 }
 
 - (void)MSGPresenceUtilsProvider_MSGReportAppState:(id)state {
     [PRMDebug noteHook:@"presence report"];
-    NSString *shape = state == nil ? @"nil"
-                    : [state isKindOfClass:[NSNumber class]] ? [NSString stringWithFormat:@"%@", state]
-                    : NSStringFromClass([state class]);
-    [PRMDebug setStatus:[NSString stringWithFormat:@"state %@ passed", shape]
+    if (PSGLie()) {
+        [PRMDebug noteAction:@"presence report"];
+        [PRMDebug setStatus:[NSString stringWithFormat:@"state %@ SWALLOWED", PSGShape(state)]
+                     forKey:@"presence report"];
+        return;
+    }
+    [PRMDebug setStatus:[NSString stringWithFormat:@"state %@ passed", PSGShape(state)]
                  forKey:@"presence report"];
     %orig;
 }
 
+- (BOOL)MSGPresenceUtilsProvider_MSGGlobalMessengerActiveStatusSettingIsEnabled:(id)argument {
+    BOOL original = %orig;
+    [PRMDebug noteHook:@"setting read"];
+    [PRMDebug setStatus:[NSString stringWithFormat:@"%d arg %@", original, PSGShape(argument)]
+                 forKey:@"setting read"];
+    return original;
+}
+
+// The pause, watched. Expiry is a timestamp; a pause in force reads as a
+// future one. With the switch on it is told never to expire, so a native
+// pause the person starts becomes permanent.
 - (BOOL)MSGPresenceUtilsProvider_MSGActiveStatusPauseExpireIfNeeded {
     BOOL original = %orig;
-    [PRMDebug setStatus:[NSString stringWithFormat:@"expire %d", original] forKey:@"pause"];
+    [PRMDebug noteHook:@"pause"];
+    [PRMDebug setStatus:[NSString stringWithFormat:@"expire %d%@", original,
+                         PSGLie() ? @" -> 0 held" : @""]
+                 forKey:@"pause"];
+    return PSGLie() ? NO : original;
+}
+
+- (id)MSGPresenceUtilsProvider_MSGActiveStatusPauseGetExpiry {
+    id expiry = %orig;
+    [PRMDebug setStatus:[NSString stringWithFormat:@"expiry %@", PSGShape(expiry)]
+                 forKey:@"pause expiry"];
+    return expiry;
+}
+
+- (BOOL)MSGPresenceUtilsProvider_MSGActiveStatusPauseStoreExpiry:(double)expiry {
+    BOOL original = %orig;
+    [PRMDebug noteHook:@"pause store"];
+    [PRMDebug setStatus:[NSString stringWithFormat:@"stored %.0f -> %d", expiry, original]
+                 forKey:@"pause store"];
     return original;
 }
 
@@ -171,7 +178,6 @@ static BOOL PSGLocalReading(BOOL original, NSString *key, NSString *extra) {
 
 - (void)reportPresenceSetting:(BOOL)enabled coPresenceEnabled:(BOOL)coPresence {
     [PRMDebug noteHook:@"setting report"];
-    PSGRememberCallers(@"setting report", PSGCallers());
     if (PSGLie()) {
         [PRMDebug noteAction:@"setting report"];
         [PRMDebug setStatus:[NSString stringWithFormat:@"transport %d/%d -> YES/%d",
@@ -187,6 +193,12 @@ static BOOL PSGLocalReading(BOOL original, NSString *key, NSString *extra) {
 
 - (void)reportAppState:(long long)state {
     [PRMDebug noteHook:@"presence transport"];
+    if (PSGLie()) {
+        [PRMDebug noteAction:@"presence transport"];
+        [PRMDebug setStatus:[NSString stringWithFormat:@"state %lld SWALLOWED", state]
+                     forKey:@"presence transport"];
+        return;
+    }
     [PRMDebug setStatus:[NSString stringWithFormat:@"state %lld passed", state]
                  forKey:@"presence transport"];
     %orig;
@@ -200,7 +212,6 @@ static BOOL PSGLocalReading(BOOL original, NSString *key, NSString *extra) {
 
 + (id)dataWithActorId:(id)actor isActive:(BOOL)active platform:(id)platform {
     [PRMDebug noteHook:@"setting report"];
-    PSGRememberCallers(@"setting report", PSGCallers());
     if (PSGLie()) {
         [PRMDebug noteAction:@"setting report"];
         [PRMDebug setStatus:[NSString stringWithFormat:@"graphql %d -> YES on %@", active, platform]
@@ -216,47 +227,14 @@ static BOOL PSGLocalReading(BOOL original, NSString *key, NSString *extra) {
 
 %end
 
-#pragma mark - The other local readers
-
-%hook MSGGlobalMessengerActiveStatusSettingObserver
-
-- (BOOL)isEnabled {
-    BOOL original = %orig;
-    return PSGLocalReading(original, @"observer read", nil);
-}
-
-%end
-
-%hook LSPresenceUserScopedPlugin
-
-- (BOOL)_isEnabled {
-    BOOL original = %orig;
-    return PSGLocalReading(original, @"ls presence read", nil);
-}
-
-%end
-
-%hook MSGCoPresenceUserScopedPlugin
-
-- (BOOL)MSGCoPresenceSettingProvider_MSGPresenceSettingsIsCoPresenceEnabled {
-    BOOL original = %orig;
-    [PRMDebug setStatus:[NSString stringWithFormat:@"%d", original] forKey:@"co-presence"];
-    return original;
-}
-
-%end
-
 #pragma mark - What arrives
 
-// Nothing here is changed. Each one says whether the server keeps sending
-// presence while the setting is off, which is the whole question.
 %hook MSGThreadPresenceObserver
 
 - (void)setCurrentStatusForThread:(id)status threadQueryKey:(id)key {
     %orig;
     [PRMDebug noteHook:@"presence arrives"];
-    [PRMDebug setStatus:[NSString stringWithFormat:@"thread status %@",
-                         status ? [status description] : @"nil"]
+    [PRMDebug setStatus:[NSString stringWithFormat:@"thread status %@", PSGShape(status)]
                  forKey:@"presence arrives"];
 }
 
@@ -271,15 +249,6 @@ static BOOL PSGLocalReading(BOOL original, NSString *key, NSString *extra) {
                          (unsigned long)([models isKindOfClass:[NSArray class]]
                                          ? [(NSArray *)models count] : 0)]
                  forKey:@"active now list"];
-}
-
-%end
-
-%hook MSGThreadViewPresenceFetchManager
-
-- (void)issueOnDemandPresenceFetch {
-    [PRMDebug noteHook:@"presence fetch"];
-    %orig;
 }
 
 %end

@@ -440,8 +440,8 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
              "encrypted chats alike. You still see theirs."],
           @[@"Active status",
             @"Turn Messenger's own Active Status off first. This then tells "
-             "Meta the setting is still on, so who is active keeps showing for "
-             "you. Check with a second account."],
+             "Meta the setting is still on and keeps the phone on off, so who "
+             "is active keeps showing for you. Check with a second account."],
           @[@"Quick reaction",
             @"The emoji beside an empty field becomes a send button, so a mis-tap "
              "no longer fires a reaction."],
