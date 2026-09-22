@@ -24,14 +24,12 @@
 //   1. the three reports to the server say "on"
 //   2. the sync landing is watched and the local cache pinned to NO right
 //      after it, so the plugin never learns the server flipped it
-//   3. _isEnabled answers NO, so the ObjC publishers stay quiet
-//   4. both app-state reports are swallowed as well, so nothing reaches the
-//      presence manager even if a publisher slips through
+//   3. both app-state reports are swallowed, so nothing reaches the presence
+//      manager; _isEnabled is left alone, since forcing it hid the display
 //
-// The one question left is whether others' presence still displays while
-// _isEnabled answers NO, since presence arrives regardless. That is read
-// from the screen, and if the dots are gone the display gate is _isEnabled
-// and needs its own split.
+// Measured on the pass that reached this state: presence arrived while the
+// phone stayed silent, and the dots were hidden only by the forced
+// _isEnabled, which is why it is no longer forced.
 //
 // The native pause is watched too: if pausing keeps the server on while the
 // phone stops publishing, Meta already ships the mechanism and a pause that
@@ -76,30 +74,16 @@ static NSString *PSGShape(id value) {
                  forKey:@"presence sync"];
 }
 
+// Observed, no longer forced. Forcing it to NO hid others' presence on
+// screen: the display reads this too, and it obeyed the forced value while
+// the server was sending (presence arrives: 1). The publishers do not need
+// the lie, their two reports below are swallowed outright.
 - (BOOL)_isEnabled {
     BOOL original = %orig;
     [PRMDebug noteHook:@"ls presence read"];
-
-    id plugin = self;
-    Ivar slot = class_getInstanceVariable(object_getClass(plugin), "_cachedPresenceEnabled");
-    Ivar cachingSlot = class_getInstanceVariable(object_getClass(plugin), "_isCachingEnabled");
-    id cached = slot ? object_getIvar(plugin, slot) : nil;
-    BOOL caching = NO;
-    if (cachingSlot != NULL) {
-        caching = ((const char *)(__bridge const void *)plugin)[ivar_getOffset(cachingSlot)] != 0;
-    }
-
-    if (!PSGLie()) {
-        [PRMDebug setStatus:[NSString stringWithFormat:@"%d | cache %@ caching %d",
-                             original, PSGShape(cached), caching]
-                     forKey:@"ls presence read"];
-        return original;
-    }
-    if (original) [PRMDebug noteAction:@"ls presence read"];
-    [PRMDebug setStatus:[NSString stringWithFormat:@"%d -> 0 | cache %@ caching %d",
-                         original, PSGShape(cached), caching]
+    [PRMDebug setStatus:[NSString stringWithFormat:@"%d passed", original]
                  forKey:@"ls presence read"];
-    return NO;
+    return original;
 }
 
 %end
