@@ -4,7 +4,7 @@ A Messenger tweak for privacy, media and a cleaner interface.
 
 ## Requirements
 
-Messenger 575.0.0 on iOS 15.1 or later, sideloaded.
+Messenger 579.0.0 on iOS 15.1 or later, sideloaded.
 
 ## Features
 
@@ -24,7 +24,7 @@ phone only.
 
 **Stories** — reply bar, start stories with sound.
 
-**Media** — unlock greyed-out media actions, a save button for story,
+**Media** — unlock grayed-out media actions, a save button for story,
 disappearing and profile pictures, content warnings, replay View once
 photos, loop videos, start videos with sound, speed up videos.
 

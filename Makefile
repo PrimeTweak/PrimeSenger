@@ -1,8 +1,6 @@
-# fleXD 6.1.0 is written against the iOS 26 SDK: eleven of its files guard
-# blocks with @available(iOS 26) and reference symbols absent from older
-# headers. Xcode carries that SDK, but Theos only looks in its own
-# directory, so it is linked in here rather than in the workflow: .github
-# is hidden in Finder and has been left behind before.
+# fleXD 6.1.0 needs the iOS 26 SDK. Xcode carries it, but Theos only looks
+# in its own sdks directory, so it is linked there from this file, which
+# always travels with the sources.
 SDK_LINK := $(shell \
     if command -v xcrun >/dev/null 2>&1; then \
         mkdir -p "$(THEOS)/sdks"; \
@@ -23,10 +21,8 @@ include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = PrimeSenger
 
-# fleXD is fetched here rather than by the workflow: .github is hidden in
-# Finder and has been left behind before, which would silently produce a
-# build with no explorer in it. Pinned by tag so a build that worked keeps
-# working.
+# fleXD is fetched here, next to the sources, and pinned by tag so a build
+# that worked keeps working.
 FLEX_TAG = 6.1.0
 FLEX_ROOT = vendor/FLEX/Classes
 FLEX_FETCH := $(shell test -d $(FLEX_ROOT) || git clone --quiet --depth 1 \
@@ -51,11 +47,9 @@ PrimeSenger_CFLAGS = -fobjc-arc -ISources -Wno-deprecated-declarations \
                      -DPRIMESENGER_DEBUG=$(PRIMESENGER_DEBUG) \
                      -DPRIMESENGER_VERSION=\"$(PRIMESENGER_VERSION)\"
 
-# fleXD builds cleanly under its own settings, which do not use -Werror.
-# Theos does, so any warning in its 182 sources stops the build, and they
-# would surface one at a time. Warnings still appear in the log; they just
-# no longer abort. This applies to this project's own sources too, so the
-# build log is worth reading rather than only its exit code.
+# Theos builds with -Werror, which fleXD's 182 sources are not written for.
+# Warnings stay in the log without stopping the build, for this project's
+# sources too, so the log is worth reading.
 PrimeSenger_CFLAGS += -Wno-error
 PrimeSenger_CXXFLAGS = -std=gnu++11 -Wno-error
 PrimeSenger_FRAMEWORKS = UIKit Foundation CoreGraphics ImageIO QuartzCore \
