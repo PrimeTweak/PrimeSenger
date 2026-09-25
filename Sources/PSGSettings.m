@@ -139,17 +139,13 @@ static UIImage *PSGGlyph(NSString *name) {
         [UIImageSymbolConfiguration configurationWithPointSize:kInfoGlyphSize
                                                         weight:UIImageSymbolWeightRegular];
     UIImage *glyph = [UIImage systemImageNamed:@"info.circle" withConfiguration:configuration];
-    if (glyph != nil) {
-        [_info setImage:glyph forState:UIControlStateNormal];
-    } else {
-        [_info setTitle:@"i" forState:UIControlStateNormal];
-    }
+    [_info setImage:glyph forState:UIControlStateNormal];
     _info.hidden = YES;
     [self addSubview:_info];
     return self;
 }
 
-// The info button sits at the trailing edge, centred on the title.
+// The info button sits at the trailing edge, centered on the title.
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGFloat height = ceil(self.label.font.lineHeight);
@@ -211,11 +207,7 @@ UIBarButtonItem *PSGCloseItem(id target, SEL action) {
     button.accessibilityLabel = @"Done";
     [button addTarget:target action:action forControlEvents:UIControlEventTouchUpInside];
     UIImage *glyph = [UIImage systemImageNamed:@"checkmark" withConfiguration:check];
-    if (glyph != nil) {
-        [button setImage:glyph forState:UIControlStateNormal];
-    } else {
-        [button setTitle:@"Done" forState:UIControlStateNormal];
-    }
+    [button setImage:glyph forState:UIControlStateNormal];
     return [[UIBarButtonItem alloc] initWithCustomView:button];
 }
 
@@ -440,7 +432,7 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
             @"person.badge.plus"]],
         @[],
         @[@[@"Unlock media actions",
-            @"Turns back on what Messenger greys out on photos and videos: save, share, forward, "
+            @"Turns back on what Messenger grays out on photos and videos: save, share, forward, "
              "copy and more.",
             @"lock.open.fill"],
           @[@"Save button",

@@ -8,7 +8,7 @@
 
 #pragma mark - Constants
 
-static const NSInteger kPSGNativeBarTag = 0x504D4701;
+static const NSInteger kPSGNativeBarTag = 0x50534703;
 
 // Marks host subviews hidden by this tweak, so anything the host hid on its
 // own is never revealed.

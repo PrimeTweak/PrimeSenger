@@ -97,7 +97,7 @@ static BOOL PSGManualAllowed(void) {
         initWithStyle:sent ? UIImpactFeedbackStyleMedium : UIImpactFeedbackStyleRigid];
     [haptic impactOccurred];
 
-    // Dimmed rather than recoloured, so the inherited tint is kept.
+    // Dimmed rather than recolored, so the inherited tint is kept.
     if (sent) {
         [UIView animateWithDuration:0.2 animations:^{ button.alpha = 0.4; }];
     }
@@ -106,10 +106,6 @@ static BOOL PSGManualAllowed(void) {
 
 @end
 
-#pragma mark - Insertion trace
-
-// The eye is rebuilt when the bar rebuilds, so it is placed again on every
-// pass rather than assumed to persist.
 #pragma mark - Placement
 
 // Inherits the title view's tint like the call buttons; struck through
@@ -121,11 +117,7 @@ static void PSGApplyEyeGlyph(UIButton *button) {
                                                         weight:UIImageSymbolWeightRegular];
     UIImage *glyph = [UIImage systemImageNamed:allowed ? @"eye.fill" : @"eye.slash.fill"
                             withConfiguration:configuration];
-    if (glyph != nil) {
-        [button setImage:glyph forState:UIControlStateNormal];
-    } else {
-        [button setTitle:allowed ? @"Seen" : @"\u2014" forState:UIControlStateNormal];
-    }
+    [button setImage:glyph forState:UIControlStateNormal];
     button.alpha = allowed ? 1.0 : 0.45;
 }
 
@@ -144,12 +136,7 @@ static UIButton *PSGMakeEyeButton(PSGReceiptEye *eye) {
     [button addTarget:eye action:@selector(tapped:)
      forControlEvents:UIControlEventTouchUpInside];
 
-    if (glyph != nil) {
-        [button setImage:glyph forState:UIControlStateNormal];
-    } else {
-        [PRMDebug log:@"eye.fill unavailable, falling back to text"];
-        [button setTitle:@"Seen" forState:UIControlStateNormal];
-    }
+    [button setImage:glyph forState:UIControlStateNormal];
     return button;
 }
 
@@ -175,11 +162,7 @@ static void PSGApplyBellGlyph(UIButton *button, BOOL silenced) {
                                                         weight:UIImageSymbolWeightRegular];
     UIImage *glyph = [UIImage systemImageNamed:silenced ? @"bell.slash.fill" : @"bell.fill"
                             withConfiguration:configuration];
-    if (glyph != nil) {
-        [button setImage:glyph forState:UIControlStateNormal];
-    } else {
-        [button setTitle:silenced ? @"Off" : @"On" forState:UIControlStateNormal];
-    }
+    [button setImage:glyph forState:UIControlStateNormal];
     button.alpha = silenced ? 1.0 : 0.45;
 }
 
@@ -262,8 +245,9 @@ static void PSGSyncBell(UIViewController *host, NSString *pass) {
                  forKey:@"silence bell"];
 }
 
-static void PSGSyncEye(UIViewController *host, NSString *pass) {
-    (void)pass;
+// The eye is rebuilt when the bar rebuilds, so it is placed again on every
+// pass rather than assumed to persist.
+static void PSGSyncEye(UIViewController *host) {
     UIView *root = host.viewIfLoaded.window;
     if (root == nil) return;
 
@@ -302,14 +286,14 @@ static void PSGSyncEye(UIViewController *host, NSString *pass) {
 
 - (void)viewDidLoad {
     %orig;
-    PSGSyncEye((UIViewController *)self, @"viewDidLoad");
+    PSGSyncEye((UIViewController *)self);
     PSGSyncBell((UIViewController *)self, @"viewDidLoad");
 }
 
 // The title view is built during layout, so the stack only exists here.
 - (void)viewDidLayoutSubviews {
     %orig;
-    PSGSyncEye((UIViewController *)self, @"layout");
+    PSGSyncEye((UIViewController *)self);
     PSGSyncBell((UIViewController *)self, @"layout");
 }
 
@@ -335,7 +319,7 @@ static void PSGSyncEye(UIViewController *host, NSString *pass) {
     if (![owner isKindOfClass:[UIViewController class]]) return;
 
     syncing = YES;
-    PSGSyncEye((UIViewController *)owner, @"navbar");
+    PSGSyncEye((UIViewController *)owner);
     PSGSyncBell((UIViewController *)owner, @"navbar");
     syncing = NO;
 }

@@ -40,86 +40,13 @@ NSString *const PRMKeyNoAutoKeyboard       = @"psg_no_auto_keyboard";
 
 @implementation PRMPrefs
 
-+ (NSArray<NSString *> *)allKeys {
-    return @[
-        PRMKeyReadAnonymously,
-        PRMKeyReadReceiptsManual,
-        PRMKeyStoriesAnonymously,
-        PRMKeyHideTypingIndicator,
-        PRMKeyUnlockMedia,
-        PRMKeyLoopVideos,
-        PRMKeyRevealCensored,
-        PRMKeyViewOnce,
-        PRMKeyHideQuickReaction,
-        PRMKeyUploadHD,
-        PRMKeySaveButton,
-        PRMKeyReadOnReply,
-        PRMKeyBlockViewOnceSend,
-        PRMKeySoundOnOpen,
-        PRMKeyStorySound,
-        PRMKeySpeed,
-        PRMKeySpeed2,
-        PRMKeyHideMetaAIMedia,
-        PRMKeySilencedChats,
-        PRMKeyHideStoryReplyBar,
-        PRMKeyHidePeopleYouMayKnow,
-        PRMKeyCallConfirmation,
-        PRMKeyHideMetaAI,
-        PRMKeyHideMetaAIButton,
-        PRMKeyHideStoriesTray,
-        PRMKeyBlockScreenshotNotice,
-        PRMKeyHidePymkInNotifications,
-        PRMKeyHideTabChats,
-        PRMKeyHideTabStories,
-        PRMKeyHideTabNotifications,
-        PRMKeyHideTabMenu,
-        PRMKeyGlassTabBar,
-        PRMKeyDebugEnabled,
-        PRMKeyFlexEnabled,
-        PRMKeyFloatingButton,
-        PRMKeyNoAutoKeyboard
-    ];
-}
-
-// Keys carried the pmg_ prefix before the rename. Values written under the
-// old names are copied across once, so no setting is lost.
-+ (void)migrateLegacyKeys {
-    NSUserDefaults *store = [NSUserDefaults standardUserDefaults];
-    static NSString *const done = @"psg_key_migration_done";
-    if ([store boolForKey:done]) return;
-
-    NSUInteger moved = 0;
-    for (NSString *key in [self allKeys]) {
-        if (![key hasPrefix:@"psg_"]) continue;
-        if ([store objectForKey:key] != nil) continue;
-
-        NSString *legacy = [@"pmg_" stringByAppendingString:
-                            [key substringFromIndex:4]];
-        id value = [store objectForKey:legacy];
-        if (value == nil) continue;
-
-        [store setObject:value forKey:key];
-        moved++;
-    }
-    [store setBool:YES forKey:done];
-    if (moved > 0) NSLog(@"[PrimeSenger] migrated %lu settings", (unsigned long)moved);
-}
-
-+ (void)initialize {
-    if (self != [PRMPrefs class]) return;
-    [self migrateLegacyKeys];
-}
-
 + (BOOL)isEnabled:(NSString *)key {
     if (key.length == 0) return NO;
     return [[NSUserDefaults standardUserDefaults] boolForKey:key];
 }
 
 + (void)setEnabled:(BOOL)enabled forKey:(NSString *)key {
-    if (key.length == 0) {
-        NSLog(@"[PrimeSenger] refused to write an empty preference key");
-        return;
-    }
+    if (key.length == 0) return;
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     [defaults setBool:enabled forKey:key];
     [defaults synchronize];

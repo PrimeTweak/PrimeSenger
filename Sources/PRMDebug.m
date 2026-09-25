@@ -27,10 +27,9 @@ static const CGFloat kStackedExtra = 68.0;
 // Frame set by dragging. Reapplied when the button is rebuilt.
 static CGRect gButtonFrame = {{0.0, 0.0}, {0.0, 0.0}};
 
-// Raised while the keyboard is showing; the button then waits above it.
+// Raised while the keyboard is showing; the floating buttons stay hidden
+// meanwhile.
 static BOOL gKeyboardUp = NO;
-
-
 
 static dispatch_queue_t gQueue = nil;
 static UIButton *gButton = nil;
@@ -124,31 +123,6 @@ static UIButton *gScope = nil;
 
 #pragma mark - Runtime inspection
 
-+ (void)dumpCollection:(id)collection label:(NSString *)label {
-    if (![self recording]) return;
-    if (![collection respondsToSelector:@selector(count)]) {
-        [self log:@"%@: not a collection (%@)", label,
-                  NSStringFromClass([collection class])];
-        return;
-    }
-
-    NSArray *items = nil;
-    if ([collection isKindOfClass:[NSArray class]]) {
-        items = collection;
-    } else if ([collection respondsToSelector:@selector(allObjects)]) {
-        items = [collection allObjects];
-    }
-    if (items == nil) return;
-
-    NSCountedSet *kinds = [NSCountedSet set];
-    for (id item in items) [kinds addObject:NSStringFromClass([item class])];
-
-    [self log:@"%@: %lu items", label, (unsigned long)items.count];
-    for (NSString *kind in kinds) {
-        [self log:@"    %ld x %@", (long)[kinds countForObject:kind], kind];
-    }
-}
-
 + (void)dumpView:(UIView *)view depth:(NSInteger)depth counter:(NSInteger *)counter {
     if (view == nil || depth > 14 || *counter > 400) return;
     (*counter)++;
@@ -201,8 +175,6 @@ static NSMutableArray<NSString *> *gScreenOrder = nil;
     }
 }
 
-#pragma mark - Report
-
 #pragma mark - Presentation
 
 + (UIWindow *)keyWindow {
@@ -216,25 +188,25 @@ static NSMutableArray<NSString *> *gScreenOrder = nil;
 }
 
 + (void)arm {
-    NSNotificationCenter *centre = [NSNotificationCenter defaultCenter];
-    [centre addObserver:self
+    NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
+    [center addObserver:self
                selector:@selector(applicationDidBecomeActive)
                    name:UIApplicationDidBecomeActiveNotification
                  object:nil];
     // Becoming active fires on every interruption. The anchor resets only
     // on a return from the background.
-    [centre addObserver:self
+    [center addObserver:self
                selector:@selector(applicationWillEnterForeground)
                    name:UIApplicationWillEnterForegroundNotification
                  object:nil];
 
     // The keyboard moves the button's slot without a screen change, so its
     // frame changes are observed directly.
-    [centre addObserver:self
+    [center addObserver:self
                selector:@selector(keyboardFrameChanged:)
                    name:UIKeyboardWillChangeFrameNotification
                  object:nil];
-    [centre addObserver:self
+    [center addObserver:self
                selector:@selector(keyboardFrameChanged:)
                    name:UIKeyboardDidHideNotification
                  object:nil];
@@ -324,14 +296,7 @@ static NSMutableArray<NSString *> *gScreenOrder = nil;
             configurationWithPointSize:kFloatingSize * kFloatingGlyphRatio
                                 weight:UIImageSymbolWeightSemibold];
     UIImage *glyph = [UIImage systemImageNamed:@"bolt.fill" withConfiguration:configuration];
-    if (glyph != nil) {
-        [button setImage:glyph forState:UIControlStateNormal];
-    } else {
-        button.titleLabel.font =
-            [UIFont monospacedSystemFontOfSize:kFloatingSize * 0.29
-                                        weight:UIFontWeightSemibold];
-        [button setTitle:@"PS" forState:UIControlStateNormal];
-    }
+    [button setImage:glyph forState:UIControlStateNormal];
 
     button.accessibilityLabel = @"PrimeSenger";
     [button addTarget:self action:@selector(openSettings)
@@ -347,10 +312,6 @@ static NSMutableArray<NSString *> *gScreenOrder = nil;
 
     [self positionButton:button inWindow:window];
 }
-
-
-// Locates the host's floating button for relative placement. The depth
-// limit covers the deepest position it has been observed at.
 
 // Two fixed slots above the tab bar: the host's own floating button slot,
 // or stacked above it while the Meta AI button is still shown.
@@ -368,8 +329,8 @@ static NSMutableArray<NSString *> *gScreenOrder = nil;
 }
 
 + (void)positionButton:(UIView *)button inWindow:(UIWindow *)window {
-    // A button the user has dragged keeps its place, across screens and
-    // across launches.
+    // A dragged button keeps its place until +returnButtonToSlot glides it
+    // back. Nothing is stored, so a relaunch starts from the slot.
     if (gButtonMoved && !CGRectIsEmpty(gButtonFrame)) {
         button.frame = gButtonFrame;
         button.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |

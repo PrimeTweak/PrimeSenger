@@ -7,8 +7,6 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 
-#pragma mark - Playback state
-
 %hook LSMediaVideoViewController
 
 #pragma mark - Permission gates

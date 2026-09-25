@@ -23,12 +23,6 @@
     %orig;
 }
 
-- (void)startTimer {
-    [PRMDebug noteHook:@"story timer"];
-    %orig;
-}
-
-
 // Story videos start muted because this answers YES; its verdict is
 // replaced when the switch is on.
 - (BOOL)shouldDefaultVideoToMute {

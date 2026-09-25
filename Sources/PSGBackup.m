@@ -326,7 +326,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
 - (void)confirmReset {
     UIAlertController *alert = [UIAlertController
         alertControllerWithTitle:@"Reset to defaults"
-                         message:@"Turns every option back to Messenger's own behaviour. Restart Messenger afterwards."
+                         message:@"Turns every option back to Messenger's own behavior. Restart Messenger afterwards."
                   preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Reset" style:UIAlertActionStyleDestructive

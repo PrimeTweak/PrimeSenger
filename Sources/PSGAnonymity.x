@@ -118,12 +118,6 @@ static id PSGTypingArgument(id typing, NSString *side) {
     return result;
 }
 
-- (id)builderWithIsTyping:(id)typing threadId:(id)threadId {
-    id forced = PSGTypingArgument(typing, @"instance");
-    id result = %orig(forced, threadId);
-    return result;
-}
-
 %end
 
 // NO unless On reply is the chosen mode: Off and Manual both mean a reply
