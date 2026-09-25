@@ -38,23 +38,51 @@ static NSString *PSGSizeText(unsigned long long bytes) {
                                           countStyle:NSByteCountFormatterCountStyleFile];
 }
 
+// The only folders of Library/Caches that are cleared: logs, crash and
+// performance reports, network and web caches. Any other folder is never touched.
+static NSArray<NSString *> *PSGClearableFolders(void) {
+    return @[@"Logs", @"FeatureLogs", @"RsysLogs", @"BreakpadAssertions", @"BreakpadStalls",
+             @"Sanitizer", @"qpl_crash_resilient", @"MNSDNSCacheV2", @"MNSResumptionCacheV2",
+             @"DGWMnsCache", @"OhaiMnsCache", @"WebKit", @"com.apple.WebKit.Networking",
+             @"com.apple.nsurlsessiond"];
+}
+
 @implementation PSGCache
 
 + (NSURL *)temporary {
     return [NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES];
 }
 
-+ (unsigned long long)clearableBytes {
-    return PSGSizeOf([self temporary]) + (unsigned long long)NSURLCache.sharedURLCache.currentDiskUsage;
+// The folders to empty: the listed cache folders that exist, and tmp.
++ (NSArray<NSURL *> *)folders {
+    NSURL *caches = [[NSFileManager defaultManager] URLsForDirectory:NSCachesDirectory
+                                                           inDomains:NSUserDomainMask].firstObject;
+    NSMutableArray<NSURL *> *folders = [NSMutableArray arrayWithObject:[self temporary]];
+    for (NSString *name in PSGClearableFolders()) {
+        NSURL *folder = [caches URLByAppendingPathComponent:name isDirectory:YES];
+        if ([folder checkResourceIsReachableAndReturnError:nil]) [folders addObject:folder];
+    }
+    return folders;
 }
 
+// The network cache lives in the app's own cache folder, whose database stays
+// open, so it is emptied through NSURLCache rather than deleted on disk.
++ (unsigned long long)clearableBytes {
+    unsigned long long total = (unsigned long long)NSURLCache.sharedURLCache.currentDiskUsage;
+    for (NSURL *folder in [self folders]) total += PSGSizeOf(folder);
+    return total;
+}
+
+// Each folder is emptied, not removed, so whatever writes into it still finds it.
 + (void)clear {
-    NSFileManager *files = [NSFileManager defaultManager];
-    for (NSURL *item in [files contentsOfDirectoryAtURL:[self temporary]
-                             includingPropertiesForKeys:nil options:0 error:nil]) {
-        [files removeItemAtURL:item error:nil];
-    }
     [NSURLCache.sharedURLCache removeAllCachedResponses];
+    NSFileManager *files = [NSFileManager defaultManager];
+    for (NSURL *folder in [self folders]) {
+        for (NSURL *item in [files contentsOfDirectoryAtURL:folder
+                                 includingPropertiesForKeys:nil options:0 error:nil]) {
+            [files removeItemAtURL:item error:nil];
+        }
+    }
     [[NSUserDefaults standardUserDefaults] setObject:[NSDate date] forKey:kPSGLastClear];
     [PRMDebug noteAction:@"cache cleared"];
 }
@@ -66,24 +94,6 @@ static NSString *PSGSizeText(unsigned long long bytes) {
     NSTimeInterval since = last ? -[last timeIntervalSinceNow] : DBL_MAX;
     NSTimeInterval wanted = interval == 2 ? 86400.0 : (interval == 3 ? 604800.0 : 0.0);
     if (since >= wanted) [self clear];
-}
-
-+ (NSArray<NSString *> *)inventory {
-    NSURL *caches = [[NSFileManager defaultManager] URLsForDirectory:NSCachesDirectory
-                                                           inDomains:NSUserDomainMask].firstObject;
-    NSMutableArray<NSString *> *lines = [NSMutableArray array];
-    NSArray<NSURL *> *items = [[NSFileManager defaultManager]
-        contentsOfDirectoryAtURL:caches includingPropertiesForKeys:nil options:0 error:nil];
-    for (NSURL *item in [items sortedArrayUsingComparator:^NSComparisonResult(NSURL *a, NSURL *b) {
-             return [a.lastPathComponent compare:b.lastPathComponent];
-         }]) {
-        [lines addObject:[NSString stringWithFormat:@"%@  %@", item.lastPathComponent,
-                                                    PSGSizeText(PSGSizeOf(item))]];
-    }
-    [lines addObject:[NSString stringWithFormat:@"(tmp)  %@", PSGSizeText(PSGSizeOf([self temporary]))]];
-    [lines addObject:[NSString stringWithFormat:@"(network cache)  %@",
-                      PSGSizeText((unsigned long long)NSURLCache.sharedURLCache.currentDiskUsage)]];
-    return lines;
 }
 
 @end
@@ -186,7 +196,8 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
 - (void)showCacheHelp {
     [PSGHelpSheet presentFrom:self title:@"Cache" items:@[
         @[@"Clear cache",
-          @"Removes Messenger's temporary files and network cache. Your chats and settings stay.",
+          @"Removes Messenger's logs, crash reports, network caches and temporary files. Your "
+           "chats, media and settings stay.",
           @"trash.fill"],
         @[@"Auto-clear", @"Clears the cache when Messenger starts, at the interval you pick.",
           @"clock.fill"],
@@ -300,7 +311,8 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
 - (void)confirmClear {
     UIAlertController *alert = [UIAlertController
         alertControllerWithTitle:@"Clear cache"
-                         message:@"Removes temporary files and the network cache. Your chats and settings stay."
+                         message:@"Removes logs, crash reports, network caches and temporary files. "
+                                  "Your chats, media and settings stay."
                   preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Clear" style:UIAlertActionStyleDestructive

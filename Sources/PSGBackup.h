@@ -6,11 +6,10 @@
 @end
 
 @interface PSGCache : NSObject
-// What Clear cache removes: temporary files and the network cache.
+// What Clear cache removes: logs, crash reports, network and web caches,
+// and temporary files. Anything else in the cache folder is left alone.
 + (unsigned long long)clearableBytes;
 + (void)clear;
 // Clears at launch when the chosen interval has passed.
 + (void)clearIfDue;
-// Top-level items of Library/Caches with their sizes, for the report.
-+ (NSArray<NSString *> *)inventory;
 @end

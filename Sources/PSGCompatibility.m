@@ -10,7 +10,6 @@
 #import "PRMDebug.h"
 #import "PSGHelp.h"
 #import "PSGSettings.h"
-#import "PSGBackup.h"
 #import <objc/runtime.h>
 
 typedef NS_ENUM(NSInteger, PSGCompatVerdict) {
@@ -170,13 +169,13 @@ static NSArray<NSDictionary *> *PSGOptions(void) {
                 @[@"native tab bar"], @"Swapped in the glass tab bar",
                 @"Relaunch Messenger", @[@[tabBar, @"", @"k"]]),
             PSGOption(@"Tab bar", @"Chats", PRMKeyHideTabChats,
-                @[@"tab bar layout"], @"Removed the tab", @"Relaunch Messenger", tabNeeds),
+                @[@"tab hidden Chats"], @"Removed the tab", @"Relaunch Messenger", tabNeeds),
             PSGOption(@"Tab bar", @"Stories", PRMKeyHideTabStories,
-                @[@"tab bar layout"], @"Removed the tab", @"Relaunch Messenger", tabNeeds),
+                @[@"tab hidden Stories"], @"Removed the tab", @"Relaunch Messenger", tabNeeds),
             PSGOption(@"Tab bar", @"Notifications", PRMKeyHideTabNotifications,
-                @[@"tab bar layout"], @"Removed the tab", @"Relaunch Messenger", tabNeeds),
+                @[@"tab hidden Notifications"], @"Removed the tab", @"Relaunch Messenger", tabNeeds),
             PSGOption(@"Tab bar", @"Menu", PRMKeyHideTabMenu,
-                @[@"tab bar layout"], @"Removed the tab", @"Relaunch Messenger", tabNeeds),
+                @[@"tab hidden Menu"], @"Removed the tab", @"Relaunch Messenger", tabNeeds),
         ];
     });
     return options;
@@ -311,8 +310,6 @@ static NSString *PSGReportText(void) {
                                result.detail.length ? [@" - " stringByAppendingString:result.detail] : @""];
         }
     }
-    [text appendString:@"\n--- cache ---\n"];
-    for (NSString *line in [PSGCache inventory]) [text appendFormat:@"%@\n", line];
     NSDictionary *status = [PRMDebug statusLines];
     if (status.count > 0) {
         [text appendString:@"\n--- status ---\n"];
@@ -393,7 +390,6 @@ static UIView *PSGSummaryView(NSArray<PSGCompatResult *> *results, CGFloat width
 @implementation PSGCompatibilityReportViewController {
     NSArray<PSGCompatResult *> *_results;
     NSArray<NSString *> *_sections;
-    NSArray<NSString *> *_cache;
     CGFloat _headerWidth;
 }
 
@@ -413,7 +409,6 @@ static UIView *PSGSummaryView(NSArray<PSGCompatResult *> *results, CGFloat width
 - (void)reload {
     _results = PSGCompatResults();
     _sections = PSGSections(_results);
-    _cache = [PSGCache inventory];
     _headerWidth = 0.0;
     [self.tableView reloadData];
     [self.view setNeedsLayout];
@@ -441,12 +436,11 @@ static UIView *PSGSummaryView(NSArray<PSGCompatResult *> *results, CGFloat width
     });
 }
 
-// Option sections, then the cache inventory, then Start over.
-- (NSInteger)cacheSection { return (NSInteger)_sections.count; }
-- (NSInteger)resetSection { return (NSInteger)_sections.count + 1; }
+// Option sections, then Start over.
+- (NSInteger)resetSection { return (NSInteger)_sections.count; }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return (NSInteger)_sections.count + 2;
+    return (NSInteger)_sections.count + 1;
 }
 
 - (NSArray<PSGCompatResult *> *)resultsInSection:(NSInteger)section {
@@ -456,13 +450,11 @@ static UIView *PSGSummaryView(NSArray<PSGCompatResult *> *results, CGFloat width
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section == [self resetSection]) return 1;
-    if (section == [self cacheSection]) return (NSInteger)_cache.count;
     return (NSInteger)[self resultsInSection:section].count;
 }
 
 - (NSString *)titleForSection:(NSInteger)section {
     if (section == [self resetSection]) return @"";
-    if (section == [self cacheSection]) return @"Cache";
     return _sections[(NSUInteger)section];
 }
 
@@ -492,16 +484,6 @@ static UIView *PSGSummaryView(NSArray<PSGCompatResult *> *results, CGFloat width
         cell.textLabel.textColor = [UIColor systemRedColor];
         cell.imageView.image = [UIImage systemImageNamed:@"arrow.counterclockwise" withConfiguration:size];
         cell.imageView.tintColor = [UIColor systemRedColor];
-        return cell;
-    }
-
-    if (indexPath.section == [self cacheSection]) {
-        UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault
-                                                       reuseIdentifier:nil];
-        cell.selectionStyle = UITableViewCellSelectionStyleNone;
-        cell.textLabel.text = _cache[(NSUInteger)indexPath.row];
-        cell.textLabel.font = [UIFont monospacedSystemFontOfSize:12.0 weight:UIFontWeightRegular];
-        cell.textLabel.textColor = [UIColor secondaryLabelColor];
         return cell;
     }
 

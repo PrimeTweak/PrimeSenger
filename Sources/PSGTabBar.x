@@ -39,6 +39,11 @@ static BOOL PSGTabIsHidden(NSString *name) {
     return [PRMPrefs isEnabled:key];
 }
 
+// One counter per tab, so each tab option gets its own verdict in the report.
+static void PSGNoteTabHidden(NSString *name) {
+    [PRMDebug noteAction:[@"tab hidden " stringByAppendingString:name]];
+}
+
 static NSString *PSGNameForItem(UITabBarItem *item) {
     if (item.title.length > 0) return item.title;
     return item.accessibilityLabel ?: @"";
@@ -95,7 +100,11 @@ static NSArray<UITabBarItem *> *PSGVisibleItems(UIView *host) {
     NSMutableArray<UITabBarItem *> *kept = [NSMutableArray array];
     for (id entry in items) {
         if (![entry isKindOfClass:[UITabBarItem class]]) continue;
-        if (PSGTabIsHidden(PSGNameForItem(entry))) continue;
+        NSString *name = PSGNameForItem(entry);
+        if (PSGTabIsHidden(name)) {
+            PSGNoteTabHidden(name);
+            continue;
+        }
         [kept addObject:entry];
     }
     return kept;
@@ -185,7 +194,11 @@ static void PSGApplyNativeBar(UIView *host) {
         NSString *name = child.accessibilityLabel ?: @"";
         BOOL ownedBefore = [objc_getAssociatedObject(child, kPSGHiddenByTweak) boolValue];
 
-        if (PSGTabIsHidden(name)) { [mine addObject:child]; continue; }
+        if (PSGTabIsHidden(name)) {
+            [mine addObject:child];
+            PSGNoteTabHidden(name);
+            continue;
+        }
         if (ownedBefore) {
             child.hidden = NO;
             objc_setAssociatedObject(child, kPSGHiddenByTweak, nil,
@@ -211,7 +224,6 @@ static void PSGApplyNativeBar(UIView *host) {
         button.frame = frame;
         index++;
     }
-    [PRMDebug noteAction:@"tab bar layout"];
 }
 
 // Selection changes without a layout pass, so the native bar is told.
