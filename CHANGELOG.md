@@ -6,7 +6,7 @@
 - Chats: quick reaction, keep the keyboard closed, confirm before calling, upload in HD, View once toggle, and a mute bell that silences a chat on this phone only
 - Chat list: stories tray, people you may know and friend suggestions
 - Stories: reply bar and start stories with sound
-- Media: unlock greyed-out actions, a save button for story, disappearing and profile pictures, content warnings, replay View once photos, and loop, sound and speed for videos
+- Media: unlock grayed-out actions, a save button for story, disappearing and profile pictures, content warnings, replay View once photos, and loop, sound and speed for videos
 - Meta AI: in search, the chat list button and the media menu
 - Tab bar: Liquid Glass and each of the four tabs
 - Tools: Backup & reset to export, import and reset settings and clear the cache, a floating button that opens the settings, and FLEX explorer
