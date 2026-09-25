@@ -28,7 +28,6 @@ extern NSString *const PRMKeyHideMetaAI;
 extern NSString *const PRMKeyHideMetaAIButton;
 extern NSString *const PRMKeyHideStoriesTray;
 extern NSString *const PRMKeyBlockScreenshotNotice;
-extern NSString *const PRMKeyMasterDisable;
 extern NSString *const PRMKeyHidePymkInNotifications;
 extern NSString *const PRMKeyHideTabChats;
 extern NSString *const PRMKeyHideTabStories;
@@ -37,6 +36,7 @@ extern NSString *const PRMKeyHideTabMenu;
 extern NSString *const PRMKeyGlassTabBar;
 extern NSString *const PRMKeyDebugEnabled;
 extern NSString *const PRMKeyFlexEnabled;
+extern NSString *const PRMKeyFloatingButton;
 extern NSString *const PRMKeyNoAutoKeyboard;
 
 @interface PRMPrefs : NSObject

@@ -43,8 +43,7 @@
     // a hook the class is only forward declared, so self has no interface
     // and the runtime calls cannot be typed.
     id target = (id)self;
-    BOOL wanted = ![PRMPrefs isEnabled:PRMKeyMasterDisable]
-               && [PRMPrefs isEnabled:PRMKeyReadAnonymously];
+    BOOL wanted = [PRMPrefs isEnabled:PRMKeyReadAnonymously];
 
     @try {
         NSNumber *before = [target valueForKey:@"disableReadReceipts"];

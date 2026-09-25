@@ -24,8 +24,7 @@
         return;
     }
 
-    BOOL wanted = ![PRMPrefs isEnabled:PRMKeyMasterDisable]
-               && [PRMPrefs isEnabled:PRMKeyFlexEnabled];
+    BOOL wanted = [PRMPrefs isEnabled:PRMKeyFlexEnabled];
 
     BOOL showing = NO;
     if ([shared respondsToSelector:@selector(isHidden)]) {

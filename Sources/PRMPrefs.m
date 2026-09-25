@@ -27,7 +27,6 @@ NSString *const PRMKeyHideMetaAI           = @"psg_hide_meta_ai";
 NSString *const PRMKeyHideMetaAIButton     = @"psg_hide_meta_ai_button";
 NSString *const PRMKeyHideStoriesTray      = @"psg_hide_stories_tray";
 NSString *const PRMKeyBlockScreenshotNotice = @"psg_block_screenshot_notice";
-NSString *const PRMKeyMasterDisable        = @"psg_master_disable";
 NSString *const PRMKeyHidePymkInNotifications = @"psg_hide_pymk_in_notifications";
 NSString *const PRMKeyHideTabChats         = @"psg_hide_tab_chats";
 NSString *const PRMKeyHideTabStories       = @"psg_hide_tab_stories";
@@ -36,6 +35,7 @@ NSString *const PRMKeyHideTabMenu          = @"psg_hide_tab_menu";
 NSString *const PRMKeyGlassTabBar          = @"psg_glass_tab_bar";
 NSString *const PRMKeyDebugEnabled          = @"psg_debug_enabled";
 NSString *const PRMKeyFlexEnabled          = @"psg_flex_enabled";
+NSString *const PRMKeyFloatingButton       = @"psg_floating_button";
 NSString *const PRMKeyNoAutoKeyboard       = @"psg_no_auto_keyboard";
 
 @implementation PRMPrefs
@@ -68,7 +68,6 @@ NSString *const PRMKeyNoAutoKeyboard       = @"psg_no_auto_keyboard";
         PRMKeyHideMetaAIButton,
         PRMKeyHideStoriesTray,
         PRMKeyBlockScreenshotNotice,
-        PRMKeyMasterDisable,
         PRMKeyHidePymkInNotifications,
         PRMKeyHideTabChats,
         PRMKeyHideTabStories,
@@ -77,6 +76,7 @@ NSString *const PRMKeyNoAutoKeyboard       = @"psg_no_auto_keyboard";
         PRMKeyGlassTabBar,
         PRMKeyDebugEnabled,
         PRMKeyFlexEnabled,
+        PRMKeyFloatingButton,
         PRMKeyNoAutoKeyboard
     ];
 }

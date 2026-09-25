@@ -12,8 +12,7 @@
 static BOOL PSGComposerFocused = NO;
 
 static BOOL PSGSuppressAutoKeyboard(void) {
-    return ![PRMPrefs isEnabled:PRMKeyMasterDisable]
-        && [PRMPrefs isEnabled:PRMKeyNoAutoKeyboard];
+    return [PRMPrefs isEnabled:PRMKeyNoAutoKeyboard];
 }
 
 %hook LSComposerViewController

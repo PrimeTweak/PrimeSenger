@@ -34,7 +34,6 @@ static NSString *PSGKeyForTabName(NSString *name) {
 }
 
 static BOOL PSGTabIsHidden(NSString *name) {
-    if ([PRMPrefs isEnabled:PRMKeyMasterDisable]) return NO;
     NSString *key = PSGKeyForTabName(name);
     if (key == nil) return NO;
     return [PRMPrefs isEnabled:key];
@@ -110,8 +109,7 @@ static UITabBarItem *PSGHostSelection(UIView *host) {
 
 static void PSGApplyNativeBar(UIView *host) {
     UITabBar *native = (UITabBar *)[host viewWithTag:kPSGNativeBarTag];
-    BOOL wanted = ![PRMPrefs isEnabled:PRMKeyMasterDisable]
-               && [PRMPrefs isEnabled:PRMKeyGlassTabBar];
+    BOOL wanted = [PRMPrefs isEnabled:PRMKeyGlassTabBar];
 
     if (!wanted) {
         PSGSetHostChromeHidden(host, native, NO);

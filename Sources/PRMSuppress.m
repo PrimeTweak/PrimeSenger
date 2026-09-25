@@ -32,7 +32,6 @@
 + (BOOL)shouldSuppressControllerName:(NSString *)name {
     // One switch neutralises every removal without disturbing the others,
     // so the interface can be restored whole in a single gesture.
-    if ([PRMPrefs isEnabled:PRMKeyMasterDisable]) return NO;
     NSString *key = [self keyForControllerName:name];
     if (key == nil) return NO;
     return [PRMPrefs isEnabled:key];

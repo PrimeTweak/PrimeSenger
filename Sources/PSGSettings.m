@@ -2,7 +2,14 @@
 #import "PRMPrefs.h"
 #import "PRMDebug.h"
 #import "PSGHelp.h"
+#import "PSGBackup.h"
 #import "PSGCompatibility.h"
+
+#ifndef PRIMESENGER_VERSION
+#define PRIMESENGER_VERSION "?"
+#endif
+
+NSString *const PSGSettingsCellIdentifier = @"row";
 
 // Metrics read off Messenger's own settings screen.
 static const CGFloat kRowHeight      = 52.0;
@@ -22,8 +29,197 @@ static const CGFloat kPillTrailing   = 10.0;
 static const CGFloat kPillLabelGap   = 10.0;
 
 static const CGFloat kInfoSize       = 22.0;
+static const CGFloat kInfoGlyphSize  = 20.0;
 
-#pragma mark - Row
+#pragma mark - Shared pieces
+
+static UIImage *PSGGlyph(NSString *name) {
+    UIImageSymbolConfiguration *configuration =
+        [UIImageSymbolConfiguration configurationWithPointSize:19.0
+                                                        weight:UIImageSymbolWeightSemibold];
+    UIImage *image = name ? [UIImage systemImageNamed:name withConfiguration:configuration] : nil;
+    if (image == nil && name != nil) {
+        [PRMDebug log:@"symbol %@ not available", name];
+        image = [UIImage systemImageNamed:@"circle.fill" withConfiguration:configuration];
+    }
+    return image;
+}
+
+@implementation PSGSettingsCell
+
+- (instancetype)initWithStyle:(UITableViewCellStyle)style
+              reuseIdentifier:(NSString *)identifier {
+    self = [super initWithStyle:style reuseIdentifier:identifier];
+    if (self == nil) return nil;
+
+    _glyph = [[UIImageView alloc] initWithFrame:CGRectZero];
+    _glyph.contentMode = UIViewContentModeScaleAspectFit;
+    _glyph.tintColor = [UIColor labelColor];
+    [self.contentView addSubview:_glyph];
+
+    _label = [[UILabel alloc] initWithFrame:CGRectZero];
+    _label.font = [UIFont systemFontOfSize:16.0];
+    [self.contentView addSubview:_label];
+
+    _toggle = [[UISwitch alloc] init];
+    _toggle.onTintColor = [UIColor colorWithRed:0.031 green:0.400 blue:1.0 alpha:1.0];
+
+    _pill = [UIButton buttonWithType:UIButtonTypeSystem];
+    _pill.titleLabel.font = [UIFont systemFontOfSize:12.5 weight:UIFontWeightSemibold];
+    _pill.backgroundColor = [UIColor tertiarySystemFillColor];
+    _pill.layer.cornerRadius = 12.0;
+    _pill.layer.cornerCurve = kCACornerCurveContinuous;
+    _pill.contentEdgeInsets = UIEdgeInsetsMake(0.0, 11.0, 0.0, 11.0);
+    [self.contentView addSubview:_pill];
+
+    _value = [[UILabel alloc] initWithFrame:CGRectZero];
+    _value.font = [UIFont systemFontOfSize:15.0];
+    _value.textAlignment = NSTextAlignmentRight;
+    [self.contentView addSubview:_value];
+    [self prepareWithTitle:nil symbol:nil];
+    return self;
+}
+
+- (void)prepareWithTitle:(NSString *)title symbol:(NSString *)symbol {
+    self.label.text = title;
+    self.label.textColor = [UIColor labelColor];
+    self.glyph.image = PSGGlyph(symbol);
+    self.glyph.tintColor = [UIColor labelColor];
+    self.pill.hidden = YES;
+    self.value.hidden = YES;
+    self.value.textColor = [UIColor secondaryLabelColor];
+    self.accessoryView = nil;
+    self.accessoryType = UITableViewCellAccessoryNone;
+    self.selectionStyle = UITableViewCellSelectionStyleNone;
+    [self.toggle removeTarget:nil action:NULL forControlEvents:UIControlEventValueChanged];
+    [self.pill removeTarget:nil action:NULL forControlEvents:UIControlEventTouchUpInside];
+    [self setNeedsLayout];
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGFloat height = self.contentView.bounds.size.height;
+    CGFloat width = self.contentView.bounds.size.width;
+    self.glyph.frame = CGRectMake(kIconLeading, (height - kIconSize) / 2.0, kIconSize, kIconSize);
+
+    CGFloat right = 16.0;
+    if (!self.pill.hidden) {
+        [self.pill sizeToFit];
+        CGFloat pillWidth = MAX(self.pill.bounds.size.width, kPillMinWidth);
+        self.pill.frame = CGRectMake(width - kPillTrailing - pillWidth,
+                                     (height - kPillHeight) / 2.0, pillWidth, kPillHeight);
+        right = kPillTrailing + pillWidth + kPillLabelGap;
+    }
+    if (!self.value.hidden) {
+        CGFloat valueWidth = ceil([self.value sizeThatFits:CGSizeMake(CGFLOAT_MAX, height)].width);
+        self.value.frame = CGRectMake(width - 8.0 - valueWidth, 0.0, valueWidth, height);
+        right = 8.0 + valueWidth + kPillLabelGap;
+    }
+    // A row without an icon starts its text where the icon would have been.
+    CGFloat left = self.glyph.image != nil ? kTextLeading : kIconLeading;
+    self.label.frame = CGRectMake(left, 0.0, width - left - right, height);
+}
+
+@end
+
+@implementation PSGSettingsHeader
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self == nil) return nil;
+    _label = [[UILabel alloc] initWithFrame:CGRectZero];
+    _label.font = [UIFont systemFontOfSize:kHeaderSize weight:UIFontWeightSemibold];
+    _label.textColor = [UIColor colorWithRed:0.396 green:0.404 blue:0.420 alpha:1.0];
+    [self addSubview:_label];
+
+    _info = [UIButton buttonWithType:UIButtonTypeSystem];
+    _info.tintColor = _label.textColor;
+    _info.accessibilityLabel = @"About these options";
+    UIImageSymbolConfiguration *configuration =
+        [UIImageSymbolConfiguration configurationWithPointSize:kInfoGlyphSize
+                                                        weight:UIImageSymbolWeightRegular];
+    UIImage *glyph = [UIImage systemImageNamed:@"info.circle" withConfiguration:configuration];
+    if (glyph != nil) {
+        [_info setImage:glyph forState:UIControlStateNormal];
+    } else {
+        [_info setTitle:@"i" forState:UIControlStateNormal];
+    }
+    _info.hidden = YES;
+    [self addSubview:_info];
+    return self;
+}
+
+// The info button sits at the trailing edge, centred on the title.
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGFloat height = ceil(self.label.font.lineHeight);
+    CGFloat top = self.bounds.size.height - height - kHeaderBaseline;
+    self.label.frame = CGRectMake(kHeaderLeading, top,
+                                  self.bounds.size.width - kHeaderLeading * 2.0 - kInfoSize, height);
+    self.info.frame = CGRectMake(self.bounds.size.width - kHeaderLeading - kInfoSize,
+                                 top + (height - kInfoSize) / 2.0, kInfoSize, kInfoSize);
+}
+
+@end
+
+void PSGStyleTable(UITableView *table) {
+    table.rowHeight = kRowHeight;
+    table.separatorInset = UIEdgeInsetsMake(0.0, kTextLeading, 0.0, 0.0);
+    [table registerClass:[PSGSettingsCell class] forCellReuseIdentifier:PSGSettingsCellIdentifier];
+}
+
+void PSGApplyCard(UITableView *table, UITableViewCell *cell, NSIndexPath *path) {
+    NSInteger count = [table numberOfRowsInSection:path.section];
+    CACornerMask corners = 0;
+    if (path.row == 0) corners |= kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner;
+    if (path.row == count - 1) corners |= kCALayerMinXMaxYCorner | kCALayerMaxXMaxYCorner;
+    UIView *card = [[UIView alloc] initWithFrame:cell.bounds];
+    card.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+    card.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    card.layer.cornerRadius = 14.0;
+    card.layer.cornerCurve = kCACornerCurveContinuous;
+    card.layer.maskedCorners = corners;
+    cell.backgroundView = card;
+    cell.backgroundColor = [UIColor clearColor];
+}
+
+PSGSettingsHeader *PSGHeader(NSString *title, id target, SEL infoAction, NSInteger tag) {
+    PSGSettingsHeader *header = [[PSGSettingsHeader alloc] initWithFrame:CGRectZero];
+    header.label.text = title;
+    header.info.hidden = infoAction == NULL;
+    if (infoAction != NULL) {
+        header.info.tag = tag;
+        [header.info addTarget:target action:infoAction forControlEvents:UIControlEventTouchUpInside];
+    }
+    return header;
+}
+
+CGFloat PSGHeaderHeight(NSInteger section, NSString *title) {
+    if (title.length == 0) return kHeaderFirst;
+    return section == 0 ? kHeaderFirst + kHeaderBaseline : kHeaderHeight;
+}
+
+// A custom view rather than the system Done item, whose iOS 26 style ignores
+// tintColor and draws a washed-out checkmark on a light sheet.
+UIBarButtonItem *PSGCloseItem(id target, SEL action) {
+    UIImageSymbolConfiguration *check =
+        [UIImageSymbolConfiguration configurationWithPointSize:17.0
+                                                        weight:UIImageSymbolWeightSemibold];
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+    button.frame = CGRectMake(0.0, 0.0, 44.0, 44.0);
+    button.tintColor = [UIColor labelColor];
+    button.accessibilityLabel = @"Done";
+    [button addTarget:target action:action forControlEvents:UIControlEventTouchUpInside];
+    UIImage *glyph = [UIImage systemImageNamed:@"checkmark" withConfiguration:check];
+    if (glyph != nil) {
+        [button setImage:glyph forState:UIControlStateNormal];
+    } else {
+        [button setTitle:@"Done" forState:UIControlStateNormal];
+    }
+    return [[UIBarButtonItem alloc] initWithCustomView:button];
+}
+
+#pragma mark - Rows
 
 typedef NS_ENUM(NSInteger, PSGRowKind) {
     PSGRowKindSwitch,
@@ -36,7 +232,7 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 @property (nonatomic, copy) NSString *key;
 @property (nonatomic, assign) BOOL inverted;
 @property (nonatomic, assign) PSGRowKind kind;
-@property (nonatomic, copy) NSString *help;
+@property (nonatomic, assign) SEL action;
 @property (nonatomic, copy) NSString *auxKey;
 @property (nonatomic, copy) NSString *auxOnTitle;
 @property (nonatomic, copy) NSString *auxOffTitle;
@@ -49,21 +245,21 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 // A noun title shows the thing, so its switch is on while the thing is
 // visible; for a key that stores "hide this", that is the stored value inverted.
 + (instancetype)row:(NSString *)title symbol:(NSString *)symbol key:(NSString *)key
-           inverted:(BOOL)inverted help:(NSString *)help {
+           inverted:(BOOL)inverted {
     PSGSettingsRow *row = [[PSGSettingsRow alloc] init];
     row.title = title;
     row.symbol = symbol;
     row.key = key;
     row.inverted = inverted;
-    row.help = help;
     row.kind = PSGRowKindSwitch;
     return row;
 }
 
-+ (instancetype)link:(NSString *)title symbol:(NSString *)symbol {
++ (instancetype)link:(NSString *)title symbol:(NSString *)symbol action:(SEL)action {
     PSGSettingsRow *row = [[PSGSettingsRow alloc] init];
     row.title = title;
     row.symbol = symbol;
+    row.action = action;
     row.kind = PSGRowKindLink;
     return row;
 }
@@ -92,137 +288,12 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 
 @end
 
-#pragma mark - Cell
-
-@interface PSGSettingsCell : UITableViewCell
-@property (nonatomic, strong) UIImageView *glyph;
-@property (nonatomic, strong) UILabel *label;
-@property (nonatomic, strong) UISwitch *toggle;
-@property (nonatomic, strong) UIButton *pill;
-@property (nonatomic, strong) UIButton *info;
-@property (nonatomic, strong) UILabel *value;
-@end
-
-@implementation PSGSettingsCell
-
-- (instancetype)initWithStyle:(UITableViewCellStyle)style
-              reuseIdentifier:(NSString *)identifier {
-    self = [super initWithStyle:style reuseIdentifier:identifier];
-    if (self == nil) return nil;
-
-    _glyph = [[UIImageView alloc] initWithFrame:CGRectZero];
-    _glyph.contentMode = UIViewContentModeScaleAspectFit;
-    _glyph.tintColor = [UIColor labelColor];
-    [self.contentView addSubview:_glyph];
-
-    _label = [[UILabel alloc] initWithFrame:CGRectZero];
-    _label.font = [UIFont systemFontOfSize:16.0];
-    _label.textColor = [UIColor labelColor];
-    [self.contentView addSubview:_label];
-
-    _toggle = [[UISwitch alloc] init];
-    _toggle.onTintColor = [UIColor colorWithRed:0.031 green:0.400 blue:1.0 alpha:1.0];
-
-    _pill = [UIButton buttonWithType:UIButtonTypeSystem];
-    _pill.titleLabel.font = [UIFont systemFontOfSize:12.5 weight:UIFontWeightSemibold];
-    _pill.backgroundColor = [UIColor tertiarySystemFillColor];
-    _pill.layer.cornerRadius = 12.0;
-    _pill.layer.cornerCurve = kCACornerCurveContinuous;
-    _pill.contentEdgeInsets = UIEdgeInsetsMake(0.0, 11.0, 0.0, 11.0);
-    _pill.hidden = YES;
-    [self.contentView addSubview:_pill];
-
-    _info = [UIButton buttonWithType:UIButtonTypeSystem];
-    _info.tintColor = [UIColor secondaryLabelColor];
-    _info.accessibilityLabel = @"About this option";
-    UIImageSymbolConfiguration *infoSize =
-        [UIImageSymbolConfiguration configurationWithPointSize:15.0
-                                                        weight:UIImageSymbolWeightRegular];
-    UIImage *infoGlyph = [UIImage systemImageNamed:@"info.circle" withConfiguration:infoSize];
-    if (infoGlyph != nil) {
-        [_info setImage:infoGlyph forState:UIControlStateNormal];
-    } else {
-        [_info setTitle:@"i" forState:UIControlStateNormal];
-    }
-    _info.hidden = YES;
-    [self.contentView addSubview:_info];
-
-    _value = [[UILabel alloc] initWithFrame:CGRectZero];
-    _value.font = [UIFont systemFontOfSize:15.0];
-    _value.textAlignment = NSTextAlignmentRight;
-    _value.hidden = YES;
-    [self.contentView addSubview:_value];
-    return self;
-}
-
-- (void)layoutSubviews {
-    [super layoutSubviews];
-    CGFloat height = self.contentView.bounds.size.height;
-    CGFloat width = self.contentView.bounds.size.width;
-    self.glyph.frame = CGRectMake(kIconLeading, (height - kIconSize) / 2.0, kIconSize, kIconSize);
-
-    CGFloat right = 16.0;
-    if (!self.pill.hidden) {
-        [self.pill sizeToFit];
-        CGFloat pillWidth = MAX(self.pill.bounds.size.width, kPillMinWidth);
-        self.pill.frame = CGRectMake(width - kPillTrailing - pillWidth,
-                                     (height - kPillHeight) / 2.0, pillWidth, kPillHeight);
-        right = kPillTrailing + pillWidth + kPillLabelGap;
-    }
-    if (!self.value.hidden) {
-        CGFloat valueWidth = ceil([self.value sizeThatFits:CGSizeMake(CGFLOAT_MAX, height)].width);
-        self.value.frame = CGRectMake(width - 8.0 - valueWidth, 0.0, valueWidth, height);
-        right = 8.0 + valueWidth + kPillLabelGap;
-    }
-
-    CGFloat available = width - kTextLeading - right;
-    if (!self.info.hidden) {
-        // The info button follows the title's last letter.
-        CGFloat textWidth = ceil([self.label sizeThatFits:CGSizeMake(CGFLOAT_MAX, height)].width);
-        CGFloat labelWidth = MIN(textWidth, available - kInfoSize - 4.0);
-        self.label.frame = CGRectMake(kTextLeading, 0.0, labelWidth, height);
-        self.info.frame = CGRectMake(kTextLeading + labelWidth + 2.0, (height - kInfoSize) / 2.0,
-                                     kInfoSize, kInfoSize);
-        return;
-    }
-    self.label.frame = CGRectMake(kTextLeading, 0.0, available, height);
-}
-
-@end
-
-#pragma mark - Header
-
-@interface PSGSettingsHeader : UIView
-@property (nonatomic, strong) UILabel *label;
-@end
-
-@implementation PSGSettingsHeader
-
-- (instancetype)initWithFrame:(CGRect)frame {
-    self = [super initWithFrame:frame];
-    if (self == nil) return nil;
-    _label = [[UILabel alloc] initWithFrame:CGRectZero];
-    _label.font = [UIFont systemFontOfSize:kHeaderSize weight:UIFontWeightSemibold];
-    _label.textColor = [UIColor colorWithRed:0.396 green:0.404 blue:0.420 alpha:1.0];
-    [self addSubview:_label];
-    return self;
-}
-
-- (void)layoutSubviews {
-    [super layoutSubviews];
-    CGFloat height = ceil(self.label.font.lineHeight);
-    CGFloat top = self.bounds.size.height - height - kHeaderBaseline;
-    self.label.frame = CGRectMake(kHeaderLeading, top,
-                                  self.bounds.size.width - kHeaderLeading * 2.0, height);
-}
-
-@end
-
 #pragma mark - Controller
 
 @interface PSGSettingsViewController ()
-@property (nonatomic, strong) NSArray<NSArray<PSGSettingsRow *> *> *sections;
 @property (nonatomic, strong) NSArray<NSString *> *titles;
+@property (nonatomic, strong) NSArray<NSArray<PSGSettingsRow *> *> *sections;
+@property (nonatomic, strong) NSArray<NSArray<NSArray<NSString *> *> *> *help;
 @end
 
 @implementation PSGSettingsViewController
@@ -233,47 +304,13 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
     return [[UINavigationController alloc] initWithRootViewController:settings];
 }
 
-// A missing symbol falls back to a plain circle rather than showing nothing.
-- (UIImage *)glyphNamed:(NSString *)name {
-    UIImageSymbolConfiguration *configuration =
-        [UIImageSymbolConfiguration configurationWithPointSize:19.0
-                                                        weight:UIImageSymbolWeightSemibold];
-    UIImage *image = [UIImage systemImageNamed:name withConfiguration:configuration];
-    if (image == nil) {
-        [PRMDebug log:@"symbol %@ not available", name];
-        image = [UIImage systemImageNamed:@"circle.fill" withConfiguration:configuration];
-    }
-    return image;
-}
-
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"PrimeSenger";
-
-    // A custom view rather than the system Done item, whose iOS 26 style
-    // ignores tintColor and draws white on a light sheet.
-    UIImageSymbolConfiguration *check =
-        [UIImageSymbolConfiguration configurationWithPointSize:17.0
-                                                        weight:UIImageSymbolWeightSemibold];
-    UIButton *closeButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    closeButton.frame = CGRectMake(0.0, 0.0, 44.0, 44.0);
-    closeButton.tintColor = [UIColor labelColor];
-    closeButton.accessibilityLabel = @"Done";
-    [closeButton addTarget:self action:@selector(close)
-          forControlEvents:UIControlEventTouchUpInside];
-    UIImage *glyph = [UIImage systemImageNamed:@"checkmark" withConfiguration:check];
-    if (glyph != nil) {
-        [closeButton setImage:glyph forState:UIControlStateNormal];
-    } else {
-        [closeButton setTitle:@"Done" forState:UIControlStateNormal];
-        [closeButton setTitleColor:[UIColor labelColor] forState:UIControlStateNormal];
-    }
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithCustomView:closeButton];
-
-    self.tableView.rowHeight = kRowHeight;
-    self.tableView.separatorInset = UIEdgeInsetsMake(0.0, kTextLeading, 0.0, 0.0);
-    [self.tableView registerClass:[PSGSettingsCell class] forCellReuseIdentifier:@"row"];
+    self.navigationItem.rightBarButtonItem = PSGCloseItem(self, @selector(close));
+    PSGStyleTable(self.tableView);
     [self buildSections];
+    [self installFooter];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -281,127 +318,170 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
     [self.tableView reloadData];
 }
 
+- (void)installFooter {
+    UILabel *footer = [[UILabel alloc] initWithFrame:CGRectMake(0.0, 0.0, 0.0, 72.0)];
+    footer.text = @"PrimeSenger " PRIMESENGER_VERSION;
+    footer.font = [UIFont systemFontOfSize:15.0 weight:UIFontWeightSemibold];
+    footer.textColor = [UIColor tertiaryLabelColor];
+    footer.textAlignment = NSTextAlignmentCenter;
+    self.tableView.tableFooterView = footer;
+}
+
+// Help lists only the options whose title leaves something out; a section
+// whose titles say it all has no info button.
 - (void)buildSections {
-    NSMutableArray<NSString *> *titles = [@[@"Privacy", @"Chats", @"Chat list", @"Stories",
-                                            @"Media", @"Meta AI", @"Tab bar"] mutableCopy];
-    NSMutableArray *sections = [@[
+    NSMutableArray *titles = [@[@"Privacy", @"Chats", @"Chat list", @"Stories",
+                                @"Media", @"Meta AI", @"Tab bar", @"Tools"] mutableCopy];
+
+    NSMutableArray<PSGSettingsRow *> *tools = [NSMutableArray arrayWithObject:
+        [PSGSettingsRow link:@"Backup & reset" symbol:@"lock.icloud.fill" action:@selector(openBackup)]];
+#if PRIMESENGER_DEBUG
+    [tools addObject:[PSGSettingsRow link:@"Compatibility" symbol:@"checkmark.seal.fill"
+                                   action:@selector(openCompatibility)]];
+#endif
+    [tools addObject:[PSGSettingsRow row:@"Floating button" symbol:@"bolt.fill"
+                                     key:PRMKeyFloatingButton inverted:NO]];
+    [tools addObject:[PSGSettingsRow row:@"FLEX explorer" symbol:@"scope"
+                                     key:PRMKeyFlexEnabled inverted:NO]];
+
+    self.sections = @[
         @[[[[PSGSettingsRow row:@"Read receipts" symbol:@"eye.fill" key:PRMKeyReadAnonymously
-                       inverted:YES
-                           help:@"Turn off so nobody sees you read. The pill sets when a receipt "
-                                 "still goes out: never, when you tap the eye, or when you reply."]
+                       inverted:YES]
              pill:PRMKeyReadReceiptsManual on:@"Manual" off:@"Never"]
              third:PRMKeyReadOnReply title:@"On reply"],
           [PSGSettingsRow row:@"Typing indicator" symbol:@"ellipsis.bubble.fill"
-                          key:PRMKeyHideTypingIndicator inverted:YES
-                         help:@"Turn off to stop sending the three dots while you type. "
-                               "You still see theirs."],
+                          key:PRMKeyHideTypingIndicator inverted:YES],
           [PSGSettingsRow row:@"Story views" symbol:@"eye.circle.fill"
-                          key:PRMKeyStoriesAnonymously inverted:YES
-                         help:@"Turn off to watch stories without appearing in the viewer list."],
+                          key:PRMKeyStoriesAnonymously inverted:YES],
           [PSGSettingsRow row:@"Screenshot alerts" symbol:@"camera.fill"
-                          key:PRMKeyBlockScreenshotNotice inverted:YES
-                         help:@"Turn off so nobody is told when you screenshot a disappearing "
-                               "photo or an encrypted chat."]],
-
+                          key:PRMKeyBlockScreenshotNotice inverted:YES]],
         @[[PSGSettingsRow row:@"Quick reaction" symbol:@"face.smiling.fill"
-                          key:PRMKeyHideQuickReaction inverted:YES
-                         help:@"Turn off to replace the emoji next to the message field with "
-                               "a send button."],
+                          key:PRMKeyHideQuickReaction inverted:YES],
           [PSGSettingsRow row:@"Keep keyboard closed" symbol:@"keyboard.chevron.compact.down"
-                          key:PRMKeyNoAutoKeyboard inverted:NO help:nil],
+                          key:PRMKeyNoAutoKeyboard inverted:NO],
           [PSGSettingsRow row:@"Confirm before calling" symbol:@"phone.fill"
-                          key:PRMKeyCallConfirmation inverted:NO help:nil],
+                          key:PRMKeyCallConfirmation inverted:NO],
           [PSGSettingsRow row:@"Upload in HD" symbol:@"arrow.up.circle.fill"
-                          key:PRMKeyUploadHD inverted:NO
-                         help:@"Photos you pick in Messenger go out in full quality. The iOS "
-                               "photo picker is not affected."],
+                          key:PRMKeyUploadHD inverted:NO],
           [PSGSettingsRow row:@"View once toggle" symbol:@"1.circle"
-                          key:PRMKeyBlockViewOnceSend inverted:YES
-                         help:@"Turn off so the View once option can't be switched on by mistake."],
+                          key:PRMKeyBlockViewOnceSend inverted:YES],
           [PSGSettingsRow row:@"Mute bell" symbol:@"bell.slash.fill"
-                          key:PRMKeySilencedChats inverted:NO
-                         help:@"Adds a bell to each chat. Tap it to mute that chat on this phone "
-                               "only; nobody is told."]],
-
+                          key:PRMKeySilencedChats inverted:NO]],
         @[[PSGSettingsRow row:@"Stories tray" symbol:@"person.3.fill"
-                          key:PRMKeyHideStoriesTray inverted:YES help:nil],
+                          key:PRMKeyHideStoriesTray inverted:YES],
           [PSGSettingsRow row:@"People you may know" symbol:@"person.2.fill"
-                          key:PRMKeyHidePeopleYouMayKnow inverted:YES help:nil],
+                          key:PRMKeyHidePeopleYouMayKnow inverted:YES],
           [PSGSettingsRow row:@"Friend suggestions" symbol:@"person.badge.plus"
-                          key:PRMKeyHidePymkInNotifications inverted:YES
-                         help:@"The suggested people shown in the notifications tab."]],
-
+                          key:PRMKeyHidePymkInNotifications inverted:YES]],
         @[[PSGSettingsRow row:@"Reply bar" symbol:@"arrowshape.turn.up.left.fill"
-                          key:PRMKeyHideStoryReplyBar inverted:YES help:nil],
+                          key:PRMKeyHideStoryReplyBar inverted:YES],
           [PSGSettingsRow row:@"Start stories with sound" symbol:@"speaker.wave.2.fill"
-                          key:PRMKeyStorySound inverted:NO help:nil]],
-
+                          key:PRMKeyStorySound inverted:NO]],
         @[[PSGSettingsRow row:@"Unlock media actions" symbol:@"lock.open.fill"
-                          key:PRMKeyUnlockMedia inverted:NO
-                         help:@"Turns back on the options Messenger greys out on photos and "
-                               "videos: save, share, forward, copy."],
+                          key:PRMKeyUnlockMedia inverted:NO],
           [PSGSettingsRow row:@"Save button" symbol:@"square.and.arrow.down.fill"
-                          key:PRMKeySaveButton inverted:NO
-                         help:@"Adds a save button to story photos, disappearing photos and "
-                               "profile pictures."],
+                          key:PRMKeySaveButton inverted:NO],
           [PSGSettingsRow row:@"Content warnings" symbol:@"exclamationmark.triangle.fill"
-                          key:PRMKeyRevealCensored inverted:YES
-                         help:@"Turn off to show photos hidden behind a warning without the "
-                               "extra tap."],
+                          key:PRMKeyRevealCensored inverted:YES],
           [PSGSettingsRow row:@"Replay view once" symbol:@"arrow.counterclockwise.circle.fill"
-                          key:PRMKeyViewOnce inverted:NO
-                         help:@"View once photos can be opened again instead of vanishing after "
-                               "one look."],
+                          key:PRMKeyViewOnce inverted:NO],
           [PSGSettingsRow row:@"Loop videos" symbol:@"repeat"
-                          key:PRMKeyLoopVideos inverted:NO help:nil],
+                          key:PRMKeyLoopVideos inverted:NO],
           [PSGSettingsRow row:@"Start videos with sound" symbol:@"speaker.wave.3.fill"
-                          key:PRMKeySoundOnOpen inverted:NO help:nil],
+                          key:PRMKeySoundOnOpen inverted:NO],
           [[PSGSettingsRow row:@"Speed up videos" symbol:@"speedometer"
-                           key:PRMKeySpeed inverted:NO help:nil]
+                           key:PRMKeySpeed inverted:NO]
              pill:PRMKeySpeed2 on:@"2x" off:@"1.5x"]],
-
         @[[PSGSettingsRow row:@"Meta AI in search" symbol:@"magnifyingglass"
-                          key:PRMKeyHideMetaAI inverted:YES help:nil],
+                          key:PRMKeyHideMetaAI inverted:YES],
           [PSGSettingsRow row:@"Meta AI button" symbol:@"sparkles"
-                          key:PRMKeyHideMetaAIButton inverted:YES help:nil],
+                          key:PRMKeyHideMetaAIButton inverted:YES],
           [PSGSettingsRow row:@"Meta AI in media menu" symbol:@"photo.fill"
-                          key:PRMKeyHideMetaAIMedia inverted:YES help:nil]],
-
+                          key:PRMKeyHideMetaAIMedia inverted:YES]],
         @[[PSGSettingsRow row:@"Liquid Glass" symbol:@"drop.fill"
-                          key:PRMKeyGlassTabBar inverted:NO
-                         help:@"Uses the iOS glass tab bar instead of Messenger's own."],
+                          key:PRMKeyGlassTabBar inverted:NO],
           [PSGSettingsRow row:@"Chats" symbol:@"bubble.left.fill"
-                          key:PRMKeyHideTabChats inverted:YES help:nil],
+                          key:PRMKeyHideTabChats inverted:YES],
           [PSGSettingsRow row:@"Stories" symbol:@"play.rectangle.fill"
-                          key:PRMKeyHideTabStories inverted:YES help:nil],
+                          key:PRMKeyHideTabStories inverted:YES],
           [PSGSettingsRow row:@"Notifications" symbol:@"bell.badge.fill"
-                          key:PRMKeyHideTabNotifications inverted:YES help:nil],
+                          key:PRMKeyHideTabNotifications inverted:YES],
           [PSGSettingsRow row:@"Menu" symbol:@"line.3.horizontal"
-                          key:PRMKeyHideTabMenu inverted:YES help:nil]],
-    ] mutableCopy];
+                          key:PRMKeyHideTabMenu inverted:YES]],
+        tools,
+    ];
 
-    // The last card carries no title: Compatibility in debug builds, FLEX, Pause.
-    NSMutableArray<PSGSettingsRow *> *last = [NSMutableArray array];
-#if PRIMESENGER_DEBUG
-    [last addObject:[PSGSettingsRow link:@"Compatibility" symbol:@"checkmark.seal.fill"]];
-#endif
-    [last addObject:[PSGSettingsRow row:@"FLEX explorer" symbol:@"scope"
-                                    key:PRMKeyFlexEnabled inverted:NO
-                                   help:@"A developer tool that inspects what is on screen."]];
-    [last addObject:[PSGSettingsRow row:@"Pause PrimeSenger" symbol:@"pause.circle.fill"
-                                    key:PRMKeyMasterDisable inverted:NO
-                                   help:@"Turns everything off at once without changing your "
-                                         "switches."]];
-    [titles addObject:@""];
-    [sections addObject:last];
-
+    self.help = @[
+        @[@[@"Read receipts",
+            @"Off, nobody sees when you read. The pill sets the exception: Never, Manual to "
+             "send one with the eye in a chat, or On reply to send one when you reply or react.",
+            @"eye.fill"],
+          @[@"Typing indicator", @"Off, the three dots are never sent. You still see theirs.",
+            @"ellipsis.bubble.fill"],
+          @[@"Screenshot alerts",
+            @"Off, nobody is told when you screenshot or record a disappearing photo, a photo "
+             "opened full screen, or an encrypted chat.",
+            @"camera.fill"]],
+        @[@[@"Quick reaction",
+            @"Off, the emoji next to the message field becomes a send button, so a stray tap "
+             "never sends a reaction.",
+            @"face.smiling.fill"],
+          @[@"Upload in HD",
+            @"Applies to photos picked in Messenger's own picker, not the iOS one.",
+            @"arrow.up.circle.fill"],
+          @[@"View once toggle",
+            @"Off, the View once option can't be switched on when you send a photo.",
+            @"1.circle"],
+          @[@"Mute bell",
+            @"Adds a bell to each chat's header. It silences that chat on this phone only; "
+             "nobody is told.",
+            @"bell.slash.fill"]],
+        @[@[@"Friend suggestions", @"The suggested people in the Notifications tab.",
+            @"person.badge.plus"]],
+        @[],
+        @[@[@"Unlock media actions",
+            @"Turns back on what Messenger greys out on photos and videos: save, share, forward, "
+             "copy and more.",
+            @"lock.open.fill"],
+          @[@"Save button",
+            @"Adds a save button to story photos, disappearing photos and profile pictures.",
+            @"square.and.arrow.down.fill"],
+          @[@"Content warnings", @"Off, photos hidden behind a warning show directly.",
+            @"exclamationmark.triangle.fill"],
+          @[@"Replay view once",
+            @"View once photos can be opened again instead of vanishing after one look.",
+            @"arrow.counterclockwise.circle.fill"]],
+        @[],
+        @[@[@"Liquid Glass", @"Uses the iOS glass tab bar instead of Messenger's own.",
+            @"drop.fill"],
+          @[@"Tabs", @"A tab you hide or show settles after Messenger restarts.",
+            @"line.3.horizontal"]],
+        @[@[@"Floating button",
+            @"The bolt over Messenger: tap it for PrimeSenger settings, drag it to move it. "
+             "It appears on its own when the Menu tab is hidden.",
+            @"bolt.fill"],
+          @[@"FLEX explorer",
+            @"A developer tool that inspects what is on screen. Leave it off in daily use.",
+            @"scope"]],
+    ];
     self.titles = titles;
-    self.sections = sections;
 }
 
 - (void)close {
     [self dismissViewControllerAnimated:YES completion:nil];
 }
+
+- (void)openBackup {
+    [self.navigationController pushViewController:
+        [[PSGBackupViewController alloc] initWithStyle:UITableViewStyleInsetGrouped] animated:YES];
+}
+
+#if PRIMESENGER_DEBUG
+- (void)openCompatibility {
+    [self.navigationController pushViewController:
+        [[PSGCompatibilityViewController alloc] initWithStyle:UITableViewStyleInsetGrouped] animated:YES];
+}
+#endif
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
     return (NSInteger)self.sections.count;
@@ -412,58 +492,43 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 }
 
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
-    NSString *title = self.titles[(NSUInteger)section];
-    if (title.length == 0) return nil;
-    PSGSettingsHeader *header = [[PSGSettingsHeader alloc] initWithFrame:CGRectZero];
-    header.label.text = title;
-    return header;
+    BOOL explained = self.help[(NSUInteger)section].count > 0;
+    return PSGHeader(self.titles[(NSUInteger)section], self,
+                     explained ? @selector(infoTapped:) : NULL, section);
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
-    if (self.titles[(NSUInteger)section].length == 0) return kHeaderFirst;
-    return section == 0 ? kHeaderFirst + kHeaderBaseline : kHeaderHeight;
+    return PSGHeaderHeight(section, self.titles[(NSUInteger)section]);
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForFooterInSection:(NSInteger)section {
     return CGFLOAT_MIN;
 }
 
+- (void)infoTapped:(UIButton *)button {
+    NSInteger section = button.tag;
+    if (section < 0 || section >= (NSInteger)self.help.count) return;
+    [PSGHelpSheet presentFrom:self title:self.titles[(NSUInteger)section]
+                        items:self.help[(NSUInteger)section]];
+}
+
 - (UITableViewCell *)tableView:(UITableView *)tableView
          cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     PSGSettingsRow *row = self.sections[(NSUInteger)indexPath.section][(NSUInteger)indexPath.row];
-    PSGSettingsCell *cell = [tableView dequeueReusableCellWithIdentifier:@"row"
+    PSGSettingsCell *cell = [tableView dequeueReusableCellWithIdentifier:PSGSettingsCellIdentifier
                                                             forIndexPath:indexPath];
+    [cell prepareWithTitle:row.title symbol:row.symbol];
     NSInteger tag = indexPath.section * 100 + indexPath.row;
-    cell.label.text = row.title;
-    cell.glyph.image = [self glyphNamed:row.symbol];
-    cell.pill.hidden = YES;
-    cell.value.hidden = YES;
-
-    cell.info.hidden = row.help.length == 0;
-    cell.info.tag = tag;
-    [cell.info removeTarget:self action:NULL forControlEvents:UIControlEventTouchUpInside];
-    [cell.info addTarget:self action:@selector(infoTapped:)
-        forControlEvents:UIControlEventTouchUpInside];
 
     if (row.kind == PSGRowKindLink) {
-        cell.accessoryView = nil;
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
         cell.selectionStyle = UITableViewCellSelectionStyleDefault;
-#if PRIMESENGER_DEBUG
-        cell.value.text = PSGCompatStatusText();
-        cell.value.textColor = PSGCompatStatusColor();
-        cell.value.hidden = NO;
-#endif
-        [cell setNeedsLayout];
         return cell;
     }
 
-    cell.accessoryType = UITableViewCellAccessoryNone;
     cell.accessoryView = cell.toggle;
-    cell.selectionStyle = UITableViewCellSelectionStyleNone;
     cell.toggle.on = [row displayedState];
     cell.toggle.tag = tag;
-    [cell.toggle removeTarget:self action:NULL forControlEvents:UIControlEventValueChanged];
     [cell.toggle addTarget:self action:@selector(toggleChanged:)
           forControlEvents:UIControlEventValueChanged];
 
@@ -471,48 +536,28 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
     if (row.auxKey != nil && [PRMPrefs isEnabled:row.key]) {
         BOOL auxOn = [PRMPrefs isEnabled:row.auxKey];
         BOOL thirdOn = row.thirdKey != nil && [PRMPrefs isEnabled:row.thirdKey];
-        NSString *label = thirdOn ? row.thirdTitle : (auxOn ? row.auxOnTitle : row.auxOffTitle);
-        [cell.pill setTitle:label forState:UIControlStateNormal];
+        [cell.pill setTitle:(thirdOn ? row.thirdTitle : (auxOn ? row.auxOnTitle : row.auxOffTitle))
+                   forState:UIControlStateNormal];
         [cell.pill setTitleColor:[UIColor labelColor] forState:UIControlStateNormal];
         cell.pill.hidden = NO;
         cell.pill.tag = tag;
-        [cell.pill removeTarget:self action:NULL forControlEvents:UIControlEventTouchUpInside];
         [cell.pill addTarget:self action:@selector(pillTapped:)
             forControlEvents:UIControlEventTouchUpInside];
     }
-    [cell setNeedsLayout];
     return cell;
 }
 
-// Each cell carries its own card, rounded only on the edges of its group,
-// so the grouped background can never fall out of step with the content.
 - (void)tableView:(UITableView *)tableView
   willDisplayCell:(UITableViewCell *)cell
 forRowAtIndexPath:(NSIndexPath *)indexPath {
-    NSInteger count = [tableView numberOfRowsInSection:indexPath.section];
-    CACornerMask corners = 0;
-    if (indexPath.row == 0) corners |= kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner;
-    if (indexPath.row == count - 1) corners |= kCALayerMinXMaxYCorner | kCALayerMaxXMaxYCorner;
-
-    UIView *card = [[UIView alloc] initWithFrame:cell.bounds];
-    card.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
-    card.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    card.layer.cornerRadius = 14.0;
-    card.layer.cornerCurve = kCACornerCurveContinuous;
-    card.layer.maskedCorners = corners;
-    cell.backgroundView = card;
-    cell.backgroundColor = [UIColor clearColor];
+    PSGApplyCard(tableView, cell, indexPath);
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
-#if PRIMESENGER_DEBUG
     PSGSettingsRow *row = self.sections[(NSUInteger)indexPath.section][(NSUInteger)indexPath.row];
-    if (row.kind != PSGRowKindLink) return;
-    PSGCompatibilityViewController *compatibility =
-        [[PSGCompatibilityViewController alloc] initWithStyle:UITableViewStyleInsetGrouped];
-    [self.navigationController pushViewController:compatibility animated:YES];
-#endif
+    if (row.kind != PSGRowKindLink || row.action == NULL) return;
+    ((void (*)(id, SEL))[self methodForSelector:row.action])(self, row.action);
 }
 
 - (PSGSettingsRow *)rowForTag:(NSInteger)tag {
@@ -522,12 +567,6 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
     NSArray<PSGSettingsRow *> *rows = self.sections[(NSUInteger)section];
     if (index < 0 || index >= (NSInteger)rows.count) return nil;
     return rows[(NSUInteger)index];
-}
-
-- (void)infoTapped:(UIButton *)button {
-    PSGSettingsRow *row = [self rowForTag:button.tag];
-    if (row.help.length == 0) return;
-    [PSGHelpSheet presentFrom:self title:row.title items:@[@[row.title, row.help]]];
 }
 
 // Cycles the pill: off, aux, then third when there is one. The keys are
@@ -543,9 +582,7 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
     } else {
         [PRMPrefs setEnabled:![PRMPrefs isEnabled:row.auxKey] forKey:row.auxKey];
     }
-    UIImpactFeedbackGenerator *haptic =
-        [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
-    [haptic impactOccurred];
+    [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
     [self.tableView reloadData];
 }
 
@@ -553,7 +590,11 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
     PSGSettingsRow *row = [self rowForTag:toggle.tag];
     if (row == nil) return;
     [row applyDisplayedState:toggle.isOn];
-    [self noteRestartIfTabRow:row];
+    if ([row.key isEqualToString:PRMKeyHideTabMenu] && [PRMPrefs isEnabled:PRMKeyHideTabMenu]) {
+        [self noteMenuTabHidden];
+    } else {
+        [self noteRestartIfTabRow:row];
+    }
     [PRMDebug refreshFloatingButton];
     [PRMDebug returnButtonToSlot];
     if (row.auxKey != nil) [self.tableView reloadData];
@@ -561,6 +602,18 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
         [PRMDebug applyFlexState];
         if (toggle.isOn) [self close];
     }
+}
+
+// Settings live under the Menu tab, so hiding it says where they went. Shown
+// every time, since it is the only way back into PrimeSenger.
+- (void)noteMenuTabHidden {
+    UIAlertController *alert = [UIAlertController
+        alertControllerWithTitle:@"Menu tab hidden"
+                         message:@"PrimeSenger settings now open from the floating bolt button. "
+                                  "The tab disappears once Messenger restarts."
+                  preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 // Tab changes settle only after a relaunch, which is said once per launch.

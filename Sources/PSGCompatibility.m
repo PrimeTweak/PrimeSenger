@@ -9,6 +9,8 @@
 #import "PRMPrefs.h"
 #import "PRMDebug.h"
 #import "PSGHelp.h"
+#import "PSGSettings.h"
+#import "PSGBackup.h"
 #import <objc/runtime.h>
 
 typedef NS_ENUM(NSInteger, PSGCompatVerdict) {
@@ -309,6 +311,8 @@ static NSString *PSGReportText(void) {
                                result.detail.length ? [@" - " stringByAppendingString:result.detail] : @""];
         }
     }
+    [text appendString:@"\n--- cache ---\n"];
+    for (NSString *line in [PSGCache inventory]) [text appendFormat:@"%@\n", line];
     NSDictionary *status = [PRMDebug statusLines];
     if (status.count > 0) {
         [text appendString:@"\n--- status ---\n"];
@@ -389,6 +393,7 @@ static UIView *PSGSummaryView(NSArray<PSGCompatResult *> *results, CGFloat width
 @implementation PSGCompatibilityReportViewController {
     NSArray<PSGCompatResult *> *_results;
     NSArray<NSString *> *_sections;
+    NSArray<NSString *> *_cache;
     CGFloat _headerWidth;
 }
 
@@ -399,16 +404,16 @@ static UIView *PSGSummaryView(NSArray<PSGCompatResult *> *results, CGFloat width
         [[UIBarButtonItem alloc] initWithTitle:@"Copy" style:UIBarButtonItemStylePlain
                                         target:self action:@selector(copyReport)];
     if (self.navigationController.viewControllers.firstObject == self) {
-        self.navigationItem.leftBarButtonItem =
-            [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone
-                                                          target:self action:@selector(done)];
+        self.navigationItem.leftBarButtonItem = PSGCloseItem(self, @selector(done));
     }
+    self.tableView.separatorInset = UIEdgeInsetsMake(0.0, 62.0, 0.0, 0.0);
     [self reload];
 }
 
 - (void)reload {
     _results = PSGCompatResults();
     _sections = PSGSections(_results);
+    _cache = [PSGCache inventory];
     _headerWidth = 0.0;
     [self.tableView reloadData];
     [self.view setNeedsLayout];
@@ -436,41 +441,73 @@ static UIView *PSGSummaryView(NSArray<PSGCompatResult *> *results, CGFloat width
     });
 }
 
+// Option sections, then the cache inventory, then Start over.
+- (NSInteger)cacheSection { return (NSInteger)_sections.count; }
+- (NSInteger)resetSection { return (NSInteger)_sections.count + 1; }
+
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return (NSInteger)_sections.count + 1;
+    return (NSInteger)_sections.count + 2;
 }
 
 - (NSArray<PSGCompatResult *> *)resultsInSection:(NSInteger)section {
     NSString *name = _sections[(NSUInteger)section];
-    NSPredicate *match = [NSPredicate predicateWithFormat:@"section == %@", name];
-    return [_results filteredArrayUsingPredicate:match];
+    return [_results filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"section == %@", name]];
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    if (section == (NSInteger)_sections.count) return 1;
+    if (section == [self resetSection]) return 1;
+    if (section == [self cacheSection]) return (NSInteger)_cache.count;
     return (NSInteger)[self resultsInSection:section].count;
 }
 
-- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    return section < (NSInteger)_sections.count ? _sections[(NSUInteger)section] : nil;
+- (NSString *)titleForSection:(NSInteger)section {
+    if (section == [self resetSection]) return @"";
+    if (section == [self cacheSection]) return @"Cache";
+    return _sections[(NSUInteger)section];
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+    NSString *title = [self titleForSection:section];
+    return title.length ? PSGHeader(title, nil, NULL, section) : nil;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+    return PSGHeaderHeight(section, [self titleForSection:section]);
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForFooterInSection:(NSInteger)section {
+    return CGFLOAT_MIN;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView
          cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
-                                                   reuseIdentifier:nil];
     UIImageSymbolConfiguration *size =
-        [UIImageSymbolConfiguration configurationWithPointSize:20.0 weight:UIImageSymbolWeightRegular];
+        [UIImageSymbolConfiguration configurationWithPointSize:19.0 weight:UIImageSymbolWeightSemibold];
 
-    if (indexPath.section == (NSInteger)_sections.count) {
+    if (indexPath.section == [self resetSection]) {
+        UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault
+                                                       reuseIdentifier:nil];
         cell.textLabel.text = @"Start over";
+        cell.textLabel.font = [UIFont systemFontOfSize:16.0];
         cell.textLabel.textColor = [UIColor systemRedColor];
         cell.imageView.image = [UIImage systemImageNamed:@"arrow.counterclockwise" withConfiguration:size];
         cell.imageView.tintColor = [UIColor systemRedColor];
         return cell;
     }
 
+    if (indexPath.section == [self cacheSection]) {
+        UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault
+                                                       reuseIdentifier:nil];
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        cell.textLabel.text = _cache[(NSUInteger)indexPath.row];
+        cell.textLabel.font = [UIFont monospacedSystemFontOfSize:12.0 weight:UIFontWeightRegular];
+        cell.textLabel.textColor = [UIColor secondaryLabelColor];
+        return cell;
+    }
+
     PSGCompatResult *result = [self resultsInSection:indexPath.section][(NSUInteger)indexPath.row];
+    UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
+                                                   reuseIdentifier:nil];
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
     cell.imageView.image = [UIImage systemImageNamed:PSGVerdictSymbol(result.verdict) withConfiguration:size];
     cell.imageView.tintColor = PSGVerdictColor(result.verdict);
@@ -485,9 +522,15 @@ static UIView *PSGSummaryView(NSArray<PSGCompatResult *> *results, CGFloat width
     return cell;
 }
 
+- (void)tableView:(UITableView *)tableView
+  willDisplayCell:(UITableViewCell *)cell
+forRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSGApplyCard(tableView, cell, indexPath);
+}
+
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    if (indexPath.section != (NSInteger)_sections.count) return;
+    if (indexPath.section != [self resetSection]) return;
     UIAlertController *alert = [UIAlertController
         alertControllerWithTitle:@"Start over"
                          message:@"Clears what this session recorded. Your settings are kept."
@@ -511,6 +554,7 @@ static UIView *PSGSummaryView(NSArray<PSGCompatResult *> *results, CGFloat width
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"Compatibility";
+    PSGStyleTable(self.tableView);
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -518,76 +562,58 @@ static UIView *PSGSummaryView(NSArray<PSGCompatResult *> *results, CGFloat width
     [self.tableView reloadData];
 }
 
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 1;
-}
-
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     return 2;
 }
 
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
-    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0.0, 0.0, tableView.bounds.size.width, 40.0)];
-    UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(20.0, 14.0, 200.0, 20.0)];
-    label.font = [UIFont systemFontOfSize:15.0 weight:UIFontWeightBold];
-    label.textColor = [UIColor secondaryLabelColor];
-    label.text = @"Session";
-    [header addSubview:label];
-
-    UIButton *info = [UIButton buttonWithType:UIButtonTypeInfoLight];
-    info.frame = CGRectMake(tableView.bounds.size.width - 20.0 - 24.0, 12.0, 24.0, 24.0);
-    info.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
-    info.tintColor = [UIColor secondaryLabelColor];
-    [info addTarget:self action:@selector(showHelp) forControlEvents:UIControlEventTouchUpInside];
-    [header addSubview:info];
-    return header;
+    return PSGHeader(@"Session", self, @selector(showHelp), section);
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
-    return 40.0;
+    return PSGHeaderHeight(section, @"Session");
 }
 
-- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-    return @"Turn on after a Messenger update, then use the app. The report shows which options still work.";
+- (CGFloat)tableView:(UITableView *)tableView heightForFooterInSection:(NSInteger)section {
+    return CGFLOAT_MIN;
 }
 
 - (void)showHelp {
     [PSGHelpSheet presentFrom:self title:@"Session" items:@[
         @[@"Record activity",
-          @"Watches what every option does while you use Messenger. The floating stethoscope opens the report anytime."],
+          @"Watches what every option does while you use Messenger. The stethoscope opens the report anytime.",
+          @"stethoscope"],
         @[@"Report",
-          @"Every option, marked Broken, Working, Not seen or Off, with what each one relies on."],
+          @"Every option and the classes it relies on, marked Broken, Working, Not seen or Off.",
+          @"list.bullet.rectangle.fill"],
     ]];
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView
          cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UIImageSymbolConfiguration *size =
-        [UIImageSymbolConfiguration configurationWithPointSize:19.0 weight:UIImageSymbolWeightSemibold];
+    PSGSettingsCell *cell = [tableView dequeueReusableCellWithIdentifier:PSGSettingsCellIdentifier
+                                                            forIndexPath:indexPath];
     if (indexPath.row == 0) {
-        UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault
-                                                       reuseIdentifier:nil];
-        cell.textLabel.text = @"Record activity";
-        cell.imageView.image = [UIImage systemImageNamed:@"stethoscope" withConfiguration:size];
-        cell.imageView.tintColor = [UIColor labelColor];
-        cell.selectionStyle = UITableViewCellSelectionStyleNone;
-        UISwitch *toggle = [[UISwitch alloc] init];
-        toggle.onTintColor = [UIColor colorWithRed:0.031 green:0.400 blue:1.0 alpha:1.0];
-        toggle.on = [PRMDebug recording];
-        [toggle addTarget:self action:@selector(recordingChanged:)
-         forControlEvents:UIControlEventValueChanged];
-        cell.accessoryView = toggle;
+        [cell prepareWithTitle:@"Record activity" symbol:@"stethoscope"];
+        cell.accessoryView = cell.toggle;
+        cell.toggle.on = [PRMDebug recording];
+        [cell.toggle addTarget:self action:@selector(recordingChanged:)
+              forControlEvents:UIControlEventValueChanged];
         return cell;
     }
-    UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1
-                                                   reuseIdentifier:nil];
-    cell.textLabel.text = @"Report";
-    cell.imageView.image = [UIImage systemImageNamed:@"list.bullet.rectangle" withConfiguration:size];
-    cell.imageView.tintColor = [UIColor labelColor];
-    cell.detailTextLabel.text = PSGCompatStatusText();
-    cell.detailTextLabel.textColor = PSGCompatStatusColor();
+    [cell prepareWithTitle:@"Report" symbol:@"list.bullet.rectangle.fill"];
+    cell.value.text = PSGCompatStatusText();
+    cell.value.textColor = PSGCompatStatusColor();
+    cell.value.hidden = NO;
     cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    cell.selectionStyle = UITableViewCellSelectionStyleDefault;
     return cell;
+}
+
+- (void)tableView:(UITableView *)tableView
+  willDisplayCell:(UITableViewCell *)cell
+forRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSGApplyCard(tableView, cell, indexPath);
 }
 
 - (void)recordingChanged:(UISwitch *)toggle {
@@ -600,9 +626,9 @@ static UIView *PSGSummaryView(NSArray<PSGCompatResult *> *results, CGFloat width
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     if (indexPath.row != 1) return;
-    PSGCompatibilityReportViewController *report =
-        [[PSGCompatibilityReportViewController alloc] initWithStyle:UITableViewStyleInsetGrouped];
-    [self.navigationController pushViewController:report animated:YES];
+    [self.navigationController pushViewController:
+        [[PSGCompatibilityReportViewController alloc] initWithStyle:UITableViewStyleInsetGrouped]
+                                         animated:YES];
 }
 
 @end

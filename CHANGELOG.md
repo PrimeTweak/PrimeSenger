@@ -2,14 +2,12 @@
 
 ## 1.0.0
 
-- Settings redesigned to match Reddit's own Settings, with help sheets
-- Filter lists for keywords, communities and muted users, each on its own page
-- Hide sections of the left menu
-- Chat tab, launch tab and account switcher
-- Compact tab bar can be turned off to keep the tab bar full size
-- Remember Home position; confirm Home and pull-to-refresh reloads
-- Colored comment thread lines with palettes
-- Backup and reset page, with the cache size and auto-clear at launch, daily or weekly
-- FLEX explorer (fleXD 6.1.0), included in every build
-- Username sign-in fixed on sideloaded builds
-- The .deb also works injected into an IPA: sideload fixes turn on only in a re-signed app
+- Privacy: read receipts with a manual eye or sent when you reply, typing indicator, story views and screenshot alerts
+- Chats: quick reaction, keep the keyboard closed, confirm before calling, upload in HD, View once toggle, and a mute bell that silences a chat on this phone only
+- Chat list: stories tray, people you may know and friend suggestions
+- Stories: reply bar and start stories with sound
+- Media: unlock greyed-out actions, a save button for story, disappearing and profile pictures, content warnings, replay View once photos, and loop, sound and speed for videos
+- Meta AI: in search, the chat list button and the media menu
+- Tab bar: Liquid Glass and each of the four tabs
+- Tools: Backup & reset to export, import and reset settings and clear the cache, a floating button that opens the settings, and FLEX explorer
+- Compatibility report in debug builds

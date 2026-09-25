@@ -34,6 +34,9 @@ static BOOL gKeyboardUp = NO;
 
 static dispatch_queue_t gQueue = nil;
 static UIButton *gButton = nil;
+#if PRIMESENGER_DEBUG
+static UIButton *gScope = nil;
+#endif
 
 @implementation PRMDebug
 
@@ -57,7 +60,11 @@ static UIButton *gButton = nil;
           initialSpringVelocity:0.0
                         options:UIViewAnimationOptionBeginFromCurrentState
                      animations:^{ button.frame = slot; }
-                     completion:nil];
+                     completion:^(BOOL finished) {
+#if PRIMESENGER_DEBUG
+        [self positionScope];
+#endif
+    }];
     [self setStatus:[NSString stringWithFormat:@"returned to slot, y=%.0f",
                      CGRectGetMinY(slot)]
              forKey:@"floating button"];
@@ -244,6 +251,10 @@ static NSMutableArray<NSString *> *gScreenOrder = nil;
     gKeyboardUp = up;
 
     UIButton *button = gButton;
+#if PRIMESENGER_DEBUG
+    UIButton *scope = gScope;
+    [UIView animateWithDuration:0.2 animations:^{ scope.alpha = up ? 0.0 : 1.0; }];
+#endif
     if (button == nil) return;
     [UIView animateWithDuration:0.2 animations:^{ button.alpha = up ? 0.0 : 1.0; }];
 }
@@ -267,14 +278,21 @@ static NSMutableArray<NSString *> *gScreenOrder = nil;
     });
 }
 
-// Shown while recording, and whenever the Menu tab is hidden: settings live
-// under that tab, so the button is then the only way in.
+// Shown on demand, and whenever the Menu tab is hidden: settings live under
+// that tab, so the bolt is then the only way in.
 + (BOOL)floatingButtonWanted {
-    if ([self recording]) return YES;
+    if ([PRMPrefs isEnabled:PRMKeyFloatingButton]) return YES;
     return [PRMPrefs isEnabled:PRMKeyHideTabMenu];
 }
 
 + (void)installButton {
+    [self installBolt];
+#if PRIMESENGER_DEBUG
+    [self installScope];
+#endif
+}
+
++ (void)installBolt {
     UIWindow *window = [self keyWindow];
     if (window == nil) return;
     if (![self floatingButtonWanted]) {
@@ -282,15 +300,11 @@ static NSMutableArray<NSString *> *gScreenOrder = nil;
         gButton = nil;
         return;
     }
-    NSString *wantedLabel = [self recording] ? @"Compatibility report" : @"PrimeSenger";
-    if (gButton.superview == window && [gButton.accessibilityLabel isEqualToString:wantedLabel]) {
+    if (gButton.superview == window) {
         if (!gButtonMoved) [self positionButton:gButton inWindow:window];
         [window bringSubviewToFront:gButton];
         return;
     }
-
-
-
     [gButton removeFromSuperview];
     UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
     button.bounds = CGRectMake(0.0, 0.0, kFloatingSize, kFloatingSize);
@@ -309,8 +323,7 @@ static NSMutableArray<NSString *> *gScreenOrder = nil;
         [UIImageSymbolConfiguration
             configurationWithPointSize:kFloatingSize * kFloatingGlyphRatio
                                 weight:UIImageSymbolWeightSemibold];
-    NSString *symbol = [self recording] ? @"stethoscope" : @"bolt.fill";
-    UIImage *glyph = [UIImage systemImageNamed:symbol withConfiguration:configuration];
+    UIImage *glyph = [UIImage systemImageNamed:@"bolt.fill" withConfiguration:configuration];
     if (glyph != nil) {
         [button setImage:glyph forState:UIControlStateNormal];
     } else {
@@ -320,21 +333,13 @@ static NSMutableArray<NSString *> *gScreenOrder = nil;
         [button setTitle:@"PS" forState:UIControlStateNormal];
     }
 
-    button.accessibilityLabel = wantedLabel;
-    [button addTarget:self action:@selector(buttonTapped)
+    button.accessibilityLabel = @"PrimeSenger";
+    [button addTarget:self action:@selector(openSettings)
      forControlEvents:UIControlEventTouchUpInside];
 
     UIPanGestureRecognizer *pan =
         [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
     [button addGestureRecognizer:pan];
-
-#if PRIMESENGER_DEBUG
-    UILongPressGestureRecognizer *hold =
-        [[UILongPressGestureRecognizer alloc] initWithTarget:self
-                                                      action:@selector(handleHold:)];
-    hold.minimumPressDuration = 0.6;
-    [button addGestureRecognizer:hold];
-#endif
 
     button.alpha = 0.0;
     [window addSubview:button];
@@ -401,6 +406,9 @@ static NSMutableArray<NSString *> *gScreenOrder = nil;
     view.center = CGPointMake(view.center.x + delta.x, view.center.y + delta.y);
     [pan setTranslation:CGPointZero inView:view.superview];
     gButtonFrame = view.frame;
+#if PRIMESENGER_DEBUG
+    [self positionScope];
+#endif
 }
 
 
@@ -441,17 +449,58 @@ static NSMutableArray<NSString *> *gScreenOrder = nil;
     });
 }
 
-+ (void)buttonTapped {
-#if PRIMESENGER_DEBUG
-    if ([self recording]) {
-        [self openCompatibilityReport];
-        return;
-    }
-#endif
-    [self openSettings];
-}
 
 #if PRIMESENGER_DEBUG
+// White on near-black, like PrimeFreeBird's, so it never reads as the bolt.
++ (void)installScope {
+    UIWindow *window = [self keyWindow];
+    if (window == nil) return;
+    if (![self recording]) {
+        [gScope removeFromSuperview];
+        gScope = nil;
+        return;
+    }
+    if (gScope.superview != window) {
+        [gScope removeFromSuperview];
+        UIButton *scope = [UIButton buttonWithType:UIButtonTypeSystem];
+        scope.bounds = CGRectMake(0.0, 0.0, kFloatingSize, kFloatingSize);
+        scope.backgroundColor = [UIColor colorWithWhite:0.09 alpha:0.82];
+        scope.layer.cornerRadius = kFloatingSize / 2.0;
+        scope.layer.borderWidth = 1.0;
+        scope.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.22].CGColor;
+        scope.tintColor = [UIColor whiteColor];
+        UIImageSymbolConfiguration *configuration =
+            [UIImageSymbolConfiguration configurationWithPointSize:kFloatingSize * kFloatingGlyphRatio
+                                                            weight:UIImageSymbolWeightSemibold];
+        [scope setImage:[UIImage systemImageNamed:@"stethoscope" withConfiguration:configuration]
+               forState:UIControlStateNormal];
+        scope.accessibilityLabel = @"Compatibility report";
+        [scope addTarget:self action:@selector(openCompatibilityReport)
+        forControlEvents:UIControlEventTouchUpInside];
+        UILongPressGestureRecognizer *hold =
+            [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleHold:)];
+        hold.minimumPressDuration = 0.6;
+        [scope addGestureRecognizer:hold];
+        [window addSubview:scope];
+        gScope = scope;
+    }
+    [self positionScope];
+    [window bringSubviewToFront:gScope];
+}
+
+// Stacked above the bolt when the bolt is showing, in its slot otherwise.
++ (void)positionScope {
+    UIButton *scope = gScope;
+    UIWindow *window = scope.window;
+    if (window == nil) return;
+    BOOL bolt = gButton.superview == window;
+    CGRect anchor = bolt ? gButton.frame : [self slotInWindow:window];
+    scope.frame = CGRectMake(CGRectGetMinX(anchor), CGRectGetMinY(anchor) - (bolt ? kStackedExtra : 0.0),
+                             kFloatingSize, kFloatingSize);
+    scope.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleTopMargin;
+    scope.alpha = gKeyboardUp ? 0.0 : 1.0;
+}
+
 + (void)handleHold:(UILongPressGestureRecognizer *)hold {
     if (hold.state != UIGestureRecognizerStateBegan) return;
     BOOL next = ![PRMPrefs isEnabled:PRMKeyFlexEnabled];

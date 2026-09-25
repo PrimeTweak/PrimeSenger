@@ -63,8 +63,7 @@ static UIStackView *PSGCallButtonStack(UIView *root, NSInteger depth) {
 // long as they are. The pill only decides whether a receipt can still be
 // sent by hand, which the glyph reflects.
 static BOOL PSGEyeWanted(void) {
-    return ![PRMPrefs isEnabled:PRMKeyMasterDisable]
-        && [PRMPrefs isEnabled:PRMKeyReadAnonymously];
+    return [PRMPrefs isEnabled:PRMKeyReadAnonymously];
 }
 
 // True for both pill states that can send a receipt. On reply sends one by
@@ -231,8 +230,7 @@ static void PSGSyncBell(UIViewController *host, NSString *pass) {
     UIStackView *stack = PSGCallButtonStack(root, 0);
     UIButton *existing = stack ? (UIButton *)[stack viewWithTag:kPSGBellTag] : nil;
 
-    BOOL wanted = ![PRMPrefs isEnabled:PRMKeyMasterDisable]
-               && [PRMPrefs isEnabled:PRMKeySilencedChats];
+    BOOL wanted = [PRMPrefs isEnabled:PRMKeySilencedChats];
     if (!wanted) {
         [existing removeFromSuperview];
         objc_setAssociatedObject(host, &kPSGBellTarget, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
