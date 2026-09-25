@@ -1,8 +1,4 @@
-// Story playback and the reply bar.
-// Signatures taken from the binary:
-//   -[LSStoryBucketViewController startTimer]                   v16@0:8
-//   -[LSStoryBucketViewController _addReplyBarViewController]   v16@0:8
-//   -[LSStoryBucketViewController _configureReplyBar]           v16@0:8
+// Stories: the reply bar, and sound on video stories.
 
 #import "PRMPrefs.h"
 #import "PRMDebug.h"
@@ -33,9 +29,8 @@
 }
 
 
-// Story videos start muted because this answers YES. Measured on 575:
-// B16@0:8, 29 instructions, 8 calls -- it consults conditions before
-// answering, and its verdict is replaced rather than its body read.
+// Story videos start muted because this answers YES; its verdict is
+// replaced when the switch is on.
 - (BOOL)shouldDefaultVideoToMute {
     BOOL original = %orig;
     [PRMDebug noteHook:@"story sound"];
@@ -48,25 +43,6 @@
     [PRMDebug setStatus:[NSString stringWithFormat:@"host %@ -> sound", original ? @"muted" : @"sound"]
                  forKey:@"story sound"];
     return NO;
-}
-
-%end
-
-#pragma mark - Impression probe
-
-// A second channel that might feed the seen list, measured on 575 at 18
-// instructions and 10 calls. Nothing is swallowed: it is counted, so a
-// second account can say whether the seen hook alone was enough.
-%hook LSStoryViewerContentController
-
-- (void)startImpressionTrackingWithAuthDataContext:(id)context
-                             impressionTrackingParams:(id)params
-                             storyBucketViewController:(id)controller {
-    [PRMDebug noteHook:@"story impression"];
-    [PRMDebug setStatus:[NSString stringWithFormat:@"started with %@",
-                         params ? NSStringFromClass([params class]) : @"nil"]
-                 forKey:@"story impression"];
-    %orig;
 }
 
 %end

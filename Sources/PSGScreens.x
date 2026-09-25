@@ -23,23 +23,20 @@
     [PRMDebug noteScreen:name view:self.viewIfLoaded];
 }
 
-// The Meta AI floating button is a Swift controller, so it is matched by
-// name here rather than hooked directly: NSStringFromClass reports
-// "MSGMetaAIFAB.MSGMetaAIFABViewController" and the mangled runtime name
-// would have to be reconstructed by hand.
+// Swift controllers, such as the Meta AI button, are matched by name here
+// rather than hooked, which would need their mangled runtime names.
 - (void)viewWillAppear:(BOOL)animated {
     %orig;
     NSString *name = NSStringFromClass([self class]);
 
-    // Every screen change moves or removes the host's floating button, and
-    // nothing else asks for a new placement: swiping between tabs used to
-    // leave the button in the slot the previous screen gave it. Placed
-    // before the suppression filter so it runs for every controller.
+    // Every screen change can move the host's floating button, so the tweak's
+    // button is placed again for every controller.
     [PRMDebug returnButtonToSlot];
 
     if ([PRMSuppress keyForControllerName:name] == nil) return;
 
-    [PRMDebug noteHook:@"suppressed controller"];
+    NSString *counter = [@"suppressed " stringByAppendingString:[PRMSuppress keyForControllerName:name]];
+    [PRMDebug noteHook:counter];
 
     UIView *view = self.viewIfLoaded;
     if (view == nil) return;
@@ -51,7 +48,7 @@
     if (view.hidden == suppress) return;
     view.hidden = suppress;
 
-    if (suppress) [PRMDebug noteAction:@"suppressed controller"];
+    if (suppress) [PRMDebug noteAction:counter];
     [PRMDebug log:@"%@ controller %@", suppress ? @"hid" : @"restored", name];
 }
 

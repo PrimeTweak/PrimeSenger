@@ -1,9 +1,5 @@
-// Help sheet for a settings group.
-//
-// Each group carries a "?" that opens this: one entry per control in the
-// group, each with a plain sentence describing what that control does.
-// Presentation only. The sentences live beside the rows they describe, in
-// the settings screen, so the two cannot drift apart.
+// The sheet behind an option's info button: its title and one or two plain
+// sentences on what the option does.
 
 #import <UIKit/UIKit.h>
 

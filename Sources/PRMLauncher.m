@@ -25,11 +25,8 @@
                      completion:nil];
 }
 
-// Called on every screen change and every keyboard movement, so a burst of
-// requests must not run a window-wide search each time. They are coalesced
-// into one placement, delayed past both layout and the keyboard animation:
-// viewWillAppear runs before the host's own button reaches its final frame,
-// and the keyboard takes about a quarter of a second to settle.
+// Requests arrive in bursts on screen and keyboard changes, so they are
+// coalesced into one placement once layout and the keyboard have settled.
 + (void)refreshFloatingButton {
     static NSUInteger generation = 0;
     NSUInteger mine = ++generation;

@@ -1,11 +1,5 @@
-// Bottom sheet listing what each control in a group does.
-//
-// The sheet stops at the height its own text needs. That detent is resolved
-// by a block, which arrived in iOS 16, so a system older than that falls
-// back to the medium height. The height is measured from the strings rather
-// than from the laid-out views, so it does not depend on when the resolver
-// is called, and the block captures only that number: capturing the
-// controller would tie it to the detent it owns.
+// A bottom sheet sized to its own text. The fitted height needs iOS 16;
+// older systems fall back to the medium detent.
 
 #import "PSGHelp.h"
 

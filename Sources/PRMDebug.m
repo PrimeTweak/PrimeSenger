@@ -27,40 +27,13 @@ static const CGFloat kStackedExtra = 68.0;
 // Frame set by dragging. Reapplied when the button is rebuilt.
 static CGRect gButtonFrame = {{0.0, 0.0}, {0.0, 0.0}};
 
-// Set once a placement against the host's own floating button has
-// succeeded. It gates the first reveal so the button is never seen moving
-// into position; it does not stop later placements, or the button would
-// keep a stale slot for the rest of the session.
-// Raised while the keyboard is showing. The button is hidden then, not
-// moved, so it comes back exactly where it was.
+// Raised while the keyboard is showing; the button then waits above it.
 static BOOL gKeyboardUp = NO;
 
 
 
 static dispatch_queue_t gQueue = nil;
 static UIButton *gButton = nil;
-
-// Design system components whose availability decides how the settings
-// screen can be built.
-static NSString *const kComponents[] = {
-    @"MDSLabel", @"MDSButton", @"MDSButtonConfig", @"MDSIconButton",
-    @"MDSTextField", @"MDSBadgeView", @"MDSBlurView", @"MDSBackgroundView",
-    @"MDSToolbar", @"MDSSegmentedControl", @"MDSNavigationController",
-    @"MDSAvatarView", @"MDSThemedTabBar", @"MDSTabBarItem",
-};
-static const NSUInteger kComponentCount = sizeof(kComponents) / sizeof(kComponents[0]);
-
-// Classes the tweak hooks or intends to hook.
-static NSString *const kTargets[] = {
-    @"MSGSettingsViewController", @"MSGThreadListViewController",
-    @"MSGThreadListDataSource", @"MSGTypingIndicatorView",
-    @"MSGMessageListViewController",
-                         @"MSGThreadViewController", @"MSGThreadViewNavBarManager", @"MSGStoryBucketsDataManager",
-    @"LSStoryBucketViewController", @"LSComposerViewController",
-    @"LSMediaViewController", @"LSRTCCallButton",
-    @"_TtC15MDSModernTabBar15MDSModernTabBar",
-};
-static const NSUInteger kTargetCount = sizeof(kTargets) / sizeof(kTargets[0]);
 
 @implementation PRMDebug
 
@@ -102,7 +75,7 @@ static const NSUInteger kTargetCount = sizeof(kTargets) / sizeof(kTargets[0]);
 #pragma mark - Recording
 
 + (void)log:(NSString *)format, ... {
-    if (![PRMPrefs isEnabled:PRMKeyDebugEnabled]) return;
+    if (![self recording]) return;
     va_list args;
     va_start(args, format);
     NSString *line = [[NSString alloc] initWithFormat:format arguments:args];
@@ -118,6 +91,7 @@ static const NSUInteger kTargetCount = sizeof(kTargets) / sizeof(kTargets[0]);
 
 + (void)setStatus:(NSString *)value forKey:(NSString *)name {
     if (name.length == 0) return;
+    if (![self recording]) return;
     dispatch_async(gQueue, ^{
         gStatus[name] = value ?: @"(nil)";
     });
@@ -125,6 +99,7 @@ static const NSUInteger kTargetCount = sizeof(kTargets) / sizeof(kTargets[0]);
 
 + (void)noteHook:(NSString *)name {
     if (name.length == 0) return;
+    if (![self recording]) return;
     dispatch_async(gQueue, ^{
         NSInteger n = gHookCounts[name].integerValue;
         gHookCounts[name] = @(n + 1);
@@ -133,6 +108,7 @@ static const NSUInteger kTargetCount = sizeof(kTargets) / sizeof(kTargets[0]);
 
 + (void)noteAction:(NSString *)name {
     if (name.length == 0) return;
+    if (![self recording]) return;
     dispatch_async(gQueue, ^{
         NSInteger n = gActionCounts[name].integerValue;
         gActionCounts[name] = @(n + 1);
@@ -142,7 +118,7 @@ static const NSUInteger kTargetCount = sizeof(kTargets) / sizeof(kTargets[0]);
 #pragma mark - Runtime inspection
 
 + (void)dumpCollection:(id)collection label:(NSString *)label {
-    if (![PRMPrefs isEnabled:PRMKeyDebugEnabled]) return;
+    if (![self recording]) return;
     if (![collection respondsToSelector:@selector(count)]) {
         [self log:@"%@: not a collection (%@)", label,
                   NSStringFromClass([collection class])];
@@ -195,48 +171,10 @@ static const NSUInteger kTargetCount = sizeof(kTargets) / sizeof(kTargets[0]);
     }
 }
 
-+ (void)dumpViewHierarchy {
-    if (![PRMPrefs isEnabled:PRMKeyDebugEnabled]) return;
-    UIWindow *window = [self keyWindow];
-    if (window == nil) { [self log:@"view dump: no key window"]; return; }
-    NSInteger counter = 0;
-    [self log:@"--- view hierarchy ---"];
-    [self dumpView:window depth:0 counter:&counter];
-    [self log:@"--- %ld views ---", (long)counter];
-}
-
 #pragma mark - One-shot inspection
 
 static NSMutableSet<NSString *> *gSeenScreens = nil;
 static NSMutableArray<NSString *> *gScreenOrder = nil;
-
-// Class-name families worth dumping in full. One scan answers every
-// question a separate build would otherwise be needed to ask.
-static NSString *const kScanFamilies[] = {
-    @"MSGSearchBarPlaceholderProvider",
-    @"MSGUniversalSearchBarCellController",
-    @"MSGAvatarSearchBar",
-    @"MDSSearchBar",
-    @"MSGInboxRowUnit",
-    @"MSGInboxRowInboxModel",
-    @"MSGThreadListViewController",
-    @"_TtC15MDSModernTabBar15MDSModernTabBar",
-    @"MDSTabBarItem",
-    @"MSGAIBotsButtonRailView",
-    @"LSMediaVideoViewController",
-    @"LSNetworkImageView",
-    @"MSGEphemeralMediaViewController",
-};
-static const NSUInteger kScanFamilyCount =
-    sizeof(kScanFamilies) / sizeof(kScanFamilies[0]);
-
-// Substring patterns matched against every loaded class name.
-static NSString *const kScanPatterns[] = {
-    @"AIBotsEntry", @"AskMetaAI", @"MetaAIButton", @"AIHomeEntry",
-    @"CTMAds", @"SponsoredRow", @"StoriesTrayRow",
-};
-static const NSUInteger kScanPatternCount =
-    sizeof(kScanPatterns) / sizeof(kScanPatterns[0]);
 
 + (void)noteScreen:(NSString *)className view:(UIView *)view {
     if (className.length == 0) return;
@@ -249,171 +187,14 @@ static const NSUInteger kScanPatternCount =
     [gScreenOrder addObject:className];
 
     [self log:@"=== screen appeared: %@ ===", className];
-    if (view != nil && [PRMPrefs isEnabled:PRMKeyDebugEnabled]) {
+    if (view != nil && [self recording]) {
         NSInteger counter = 0;
         [self dumpView:view depth:1 counter:&counter];
         [self log:@"=== %ld views in %@ ===", (long)counter, className];
     }
 }
 
-+ (void)dumpOneClass:(NSString *)name {
-    Class cls = NSClassFromString(name);
-    if (cls == Nil) { [self log:@"%@: ABSENT", name]; return; }
-    unsigned int count = 0;
-    Method *methods = class_copyMethodList(cls, &count);
-    [self log:@"%@ : %u methods  (super %@)",
-              name, count, NSStringFromClass([cls superclass]) ?: @"-"];
-    for (unsigned int i = 0; i < count && i < 80; i++) {
-        const char *types = method_getTypeEncoding(methods[i]);
-        [self log:@"    -%@  %s", NSStringFromSelector(method_getName(methods[i])),
-                  types ?: ""];
-    }
-    free(methods);
-
-    unsigned int ic = 0;
-    Ivar *ivars = class_copyIvarList(cls, &ic);
-    for (unsigned int i = 0; i < ic && i < 40; i++) {
-        [self log:@"    ivar %s : %s",
-                  ivar_getName(ivars[i]) ?: "?", ivar_getTypeEncoding(ivars[i]) ?: "?"];
-    }
-    free(ivars);
-}
-
-+ (void)runFullScan {
-    [self log:@"########## FULL SCAN ##########"];
-
-    [self log:@"--- named classes ---"];
-    for (NSUInteger i = 0; i < kScanFamilyCount; i++) {
-        [self dumpOneClass:kScanFamilies[i]];
-    }
-
-    [self log:@"--- pattern matches across every loaded class ---"];
-    unsigned int total = 0;
-    Class *all = objc_copyClassList(&total);
-    NSUInteger hits = 0;
-    for (unsigned int i = 0; i < total; i++) {
-        const char *raw = class_getName(all[i]);
-        if (raw == NULL) continue;
-        NSString *name = @(raw);
-        for (NSUInteger p = 0; p < kScanPatternCount; p++) {
-            if ([name rangeOfString:kScanPatterns[p]].location == NSNotFound) continue;
-            unsigned int mc = 0;
-            Method *m = class_copyMethodList(all[i], &mc);
-            free(m);
-            [self log:@"    %@  (%u methods)", name, mc];
-            hits++;
-            break;
-        }
-        if (hits > 200) break;
-    }
-    free(all);
-    [self log:@"--- %lu pattern matches, %u classes loaded ---",
-              (unsigned long)hits, total];
-
-    [self log:@"--- screens seen this session ---"];
-    for (NSString *name in gScreenOrder) [self log:@"    %@", name];
-
-    [self log:@"########## END SCAN ##########"];
-}
-
-+ (NSUInteger)copyReportToPasteboard {
-    NSString *text = [self report];
-    [UIPasteboard generalPasteboard].string = text;
-    return text.length;
-}
-
 #pragma mark - Report
-
-+ (NSString *)report {
-    __block NSString *result = nil;
-    dispatch_sync(gQueue, ^{
-        NSMutableArray<NSString *> *lines = [NSMutableArray array];
-        // The source count comes from the Makefile, so the report states
-        // what the build actually compiled without opening a build log.
-#ifndef PSG_FLEX_SOURCES
-#define PSG_FLEX_SOURCES 0
-#endif
-        [lines addObject:[NSString stringWithFormat:
-                          @"PrimeSenger 1.0.1 — debug | FLEX %@ (%d compiled)",
-                          [self flexAvailable] ? @"linked" : @"NOT LINKED",
-                          (int)PSG_FLEX_SOURCES]];
-        [lines addObject:[NSString stringWithFormat:@"logging: %@",
-                          [PRMPrefs isEnabled:PRMKeyDebugEnabled] ? @"on" : @"off"]];
-
-        [lines addObject:@""];
-        [lines addObject:@"--- status ---"];
-        if (gStatus.count == 0) {
-            [lines addObject:@"(nothing reported yet)"];
-        } else {
-            for (NSString *name in [gStatus.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
-                [lines addObject:[NSString stringWithFormat:@"%-26s %@",
-                                  name.UTF8String, gStatus[name]]];
-            }
-        }
-
-        [lines addObject:@""];
-        [lines addObject:@"--- hooks fired ---"];
-        NSMutableSet *every = [NSMutableSet setWithArray:gHookCounts.allKeys];
-        [every addObjectsFromArray:gActionCounts.allKeys];
-        if (every.count == 0) {
-            [lines addObject:@"(none yet)"];
-        } else {
-            NSArray *names = [every.allObjects sortedArrayUsingSelector:@selector(compare:)];
-            for (NSString *name in names) {
-                [lines addObject:[NSString stringWithFormat:@"%-34s ran %@  acted %@",
-                                  name.UTF8String,
-                                  gHookCounts[name] ?: @0,
-                                  gActionCounts[name] ?: @0]];
-            }
-        }
-
-        [lines addObject:@""];
-        [lines addObject:@"--- switches ---"];
-        NSArray *keys = [PRMPrefs allKeys];
-        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-        for (NSString *key in keys) {
-            id raw = [defaults objectForKey:key];
-            [lines addObject:[NSString stringWithFormat:@"%-34s %@   stored:%@",
-                              key.UTF8String,
-                              [PRMPrefs isEnabled:key] ? @"ON" : @"off",
-                              raw ? raw : @"(never written)"]];
-        }
-
-        [lines addObject:@""];
-        [lines addObject:@"--- design system ---"];
-        for (NSUInteger i = 0; i < kComponentCount; i++) {
-            Class cls = NSClassFromString(kComponents[i]);
-            unsigned int n = 0;
-            if (cls) { Method *m = class_copyMethodList(cls, &n); free(m); }
-            [lines addObject:[NSString stringWithFormat:@"%-24s %@",
-                              kComponents[i].UTF8String,
-                              cls ? [NSString stringWithFormat:@"%u methods", n] : @"ABSENT"]];
-        }
-
-        [lines addObject:@""];
-        [lines addObject:@"--- hook targets ---"];
-        for (NSUInteger i = 0; i < kTargetCount; i++) {
-            Class cls = NSClassFromString(kTargets[i]);
-            unsigned int n = 0;
-            if (cls) { Method *m = class_copyMethodList(cls, &n); free(m); }
-            [lines addObject:[NSString stringWithFormat:@"%-42s %@",
-                              kTargets[i].UTF8String,
-                              cls ? [NSString stringWithFormat:@"%u methods", n] : @"ABSENT"]];
-        }
-
-        [lines addObject:@""];
-        [lines addObject:[NSString stringWithFormat:@"--- log (%lu lines) ---",
-                          (unsigned long)gLog.count]];
-        if (gLog.count == 0) {
-            [lines addObject:@"(empty — enable logging in settings)"];
-        } else {
-            [lines addObjectsFromArray:gLog];
-        }
-
-        result = [lines componentsJoinedByString:@"\n"];
-    });
-    return result;
-}
 
 #pragma mark - Presentation
 
@@ -425,23 +206,6 @@ static const NSUInteger kScanPatternCount =
         }
     }
     return nil;
-}
-
-// UIDesignRequiresCompatibility makes UIKit render UIGlassEffect with the
-// legacy material. It is read from the bundle so the state of the build is
-// visible without inspecting the IPA.
-+ (void)reportDesignMode {
-    id value = [[NSBundle mainBundle]
-                objectForInfoDictionaryKey:@"UIDesignRequiresCompatibility"];
-    NSString *state;
-    if (value == nil) {
-        state = @"absent, Liquid Glass available";
-    } else if ([value boolValue]) {
-        state = @"true, Liquid Glass rendered as legacy material";
-    } else {
-        state = @"false, Liquid Glass available";
-    }
-    [self setStatus:state forKey:@"design compatibility"];
 }
 
 + (void)arm {
@@ -457,10 +221,8 @@ static const NSUInteger kScanPatternCount =
                    name:UIApplicationWillEnterForegroundNotification
                  object:nil];
 
-    // The keyboard moves the host's floating button without changing
-    // screen, so no appearance callback fires and the placement would stay
-    // where the raised keyboard left it. One notification covers showing,
-    // hiding and interactive dismissal; a second catches the final state.
+    // The keyboard moves the button's slot without a screen change, so its
+    // frame changes are observed directly.
     [centre addObserver:self
                selector:@selector(keyboardFrameChanged:)
                    name:UIKeyboardWillChangeFrameNotification
@@ -486,21 +248,11 @@ static const NSUInteger kScanPatternCount =
     [UIView animateWithDuration:0.2 animations:^{ button.alpha = up ? 0.0 : 1.0; }];
 }
 
-// Reported whether or not the switch is touched, so one look at the report
-// says if the vendor clone made it into the dylib.
-+ (void)reportFlexPresence {
-    [self setStatus:[self flexAvailable] ? @"FLEXManager present, ready"
-                                         : @"FLEXManager ABSENT from the dylib"
-             forKey:@"flex"];
-}
-
 + (void)applicationWillEnterForeground {
     [self returnButtonToSlot];
 }
 
 + (void)applicationDidBecomeActive {
-    [self reportDesignMode];
-    [self reportFlexPresence];
 
     // The explorer does not survive a relaunch on its own, so the stored
     // preference is reapplied once the scene is active.
@@ -508,17 +260,17 @@ static const NSUInteger kScanPatternCount =
                    dispatch_get_main_queue(), ^{
         [self applyFlexState];
     });
-    // The position no longer depends on finding anything, so one pass is
-    // enough. A short delay lets the window exist first.
+    // Placed once the window exists.
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         [self installButton];
     });
 }
 
-// Shown when the Menu tab is hidden, or when the switch requests it.
+// Shown while recording, and whenever the Menu tab is hidden: settings live
+// under that tab, so the button is then the only way in.
 + (BOOL)floatingButtonWanted {
-    if ([PRMPrefs isEnabled:PRMKeyFloatingButton]) return YES;
+    if ([self recording]) return YES;
     return [PRMPrefs isEnabled:PRMKeyHideTabMenu];
 }
 
@@ -530,7 +282,8 @@ static const NSUInteger kScanPatternCount =
         gButton = nil;
         return;
     }
-    if (gButton.superview == window) {
+    NSString *wantedLabel = [self recording] ? @"Compatibility report" : @"PrimeSenger";
+    if (gButton.superview == window && [gButton.accessibilityLabel isEqualToString:wantedLabel]) {
         if (!gButtonMoved) [self positionButton:gButton inWindow:window];
         [window bringSubviewToFront:gButton];
         return;
@@ -556,30 +309,32 @@ static const NSUInteger kScanPatternCount =
         [UIImageSymbolConfiguration
             configurationWithPointSize:kFloatingSize * kFloatingGlyphRatio
                                 weight:UIImageSymbolWeightSemibold];
-    UIImage *bolt = [UIImage systemImageNamed:@"bolt.fill" withConfiguration:configuration];
-    if (bolt != nil) {
-        [button setImage:bolt forState:UIControlStateNormal];
+    NSString *symbol = [self recording] ? @"stethoscope" : @"bolt.fill";
+    UIImage *glyph = [UIImage systemImageNamed:symbol withConfiguration:configuration];
+    if (glyph != nil) {
+        [button setImage:glyph forState:UIControlStateNormal];
     } else {
-        [PRMDebug log:@"bolt.fill unavailable for the floating button"];
         button.titleLabel.font =
             [UIFont monospacedSystemFontOfSize:kFloatingSize * 0.29
                                         weight:UIFontWeightSemibold];
-        [button setTitle:@"PM" forState:UIControlStateNormal];
+        [button setTitle:@"PS" forState:UIControlStateNormal];
     }
 
-    button.accessibilityLabel = @"PrimeSenger";
-    [button addTarget:self action:@selector(openSettings)
+    button.accessibilityLabel = wantedLabel;
+    [button addTarget:self action:@selector(buttonTapped)
      forControlEvents:UIControlEventTouchUpInside];
 
     UIPanGestureRecognizer *pan =
         [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
     [button addGestureRecognizer:pan];
 
+#if PRIMESENGER_DEBUG
     UILongPressGestureRecognizer *hold =
         [[UILongPressGestureRecognizer alloc] initWithTarget:self
                                                       action:@selector(handleHold:)];
     hold.minimumPressDuration = 0.6;
     [button addGestureRecognizer:hold];
+#endif
 
     button.alpha = 0.0;
     [window addSubview:button];
@@ -592,13 +347,8 @@ static const NSUInteger kScanPatternCount =
 // Locates the host's floating button for relative placement. The depth
 // limit covers the deepest position it has been observed at.
 
-// Two fixed slots, derived from what the reports measured on a 956pt
-// screen with a 34pt safe area:
-//   host slot      956 - (34 + 65) - 50 = 807   matches "took host slot at y=807"
-//   stacked above  956 - (34 + 65 + 68) - 50 = 739   matches "stacked above at y=739"
-// The host is 52pt tall and sits 16pt above the tab bar, so stacking adds
-// 68pt. Nothing is looked up at placement time, so nothing can move the
-// button once it is placed.
+// Two fixed slots above the tab bar: the host's own floating button slot,
+// or stacked above it while the Meta AI button is still shown.
 + (CGRect)slotInWindow:(UIWindow *)window {
     CGFloat trailing = window.bounds.size.width - window.safeAreaInsets.right
                      - kFloatingEdgeInset - kFloatingSize;
@@ -642,36 +392,6 @@ static const NSUInteger kScanPatternCount =
              forKey:@"floating button"];
 }
 
-+ (void)handleHold:(UILongPressGestureRecognizer *)hold {
-    if (hold.state != UIGestureRecognizerStateBegan) return;
-
-    UIView *button = hold.view;
-    BOOL logging = [PRMPrefs isEnabled:PRMKeyDebugEnabled];
-
-    // Green confirms the capture ran, red says logging is off and nothing
-    // was recorded.
-    UIColor *flash = logging
-        ? [UIColor colorWithRed:0.16 green:0.72 blue:0.36 alpha:1.0]
-        : [UIColor colorWithRed:0.78 green:0.22 blue:0.18 alpha:1.0];
-    UIColor *restore = button.backgroundColor;
-    button.backgroundColor = flash;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        button.backgroundColor = restore;
-    });
-
-    if (!logging) return;
-
-    // Hidden for the walk so the capture describes the screen underneath.
-    button.hidden = YES;
-    [self dumpViewHierarchy];
-    button.hidden = NO;
-
-    // Copied immediately: one gesture captures the screen and puts the whole
-    // report where it can be pasted.
-    [self copyReportToPasteboard];
-}
-
 + (void)handlePan:(UIPanGestureRecognizer *)pan {
     UIView *view = pan.view;
     if (view == nil || view.superview == nil) return;
@@ -683,49 +403,62 @@ static const NSUInteger kScanPatternCount =
     gButtonFrame = view.frame;
 }
 
-+ (void)present {
-    UIWindow *window = [self keyWindow];
-    if (window == nil) return;
 
-    UIView *backdrop = [[UIView alloc] initWithFrame:window.bounds];
-    backdrop.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.94];
-    backdrop.autoresizingMask = UIViewAutoresizingFlexibleWidth |
-                                UIViewAutoresizingFlexibleHeight;
+#pragma mark - Recording
 
-    UIScrollView *scroll = [[UIScrollView alloc] initWithFrame:CGRectZero];
-    scroll.translatesAutoresizingMaskIntoConstraints = NO;
-    scroll.indicatorStyle = UIScrollViewIndicatorStyleWhite;
-    [backdrop addSubview:scroll];
-
-    UILabel *label = [[UILabel alloc] initWithFrame:CGRectZero];
-    label.translatesAutoresizingMaskIntoConstraints = NO;
-    label.numberOfLines = 0;
-    label.textColor = [UIColor colorWithRed:0.42 green:0.96 blue:0.58 alpha:1.0];
-    label.font = [UIFont monospacedSystemFontOfSize:9.5 weight:UIFontWeightRegular];
-    label.text = [NSString stringWithFormat:@"%@\n\ntap to dismiss", [self report]];
-    [scroll addSubview:label];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [scroll.topAnchor constraintEqualToAnchor:backdrop.safeAreaLayoutGuide.topAnchor constant:10],
-        [scroll.bottomAnchor constraintEqualToAnchor:backdrop.safeAreaLayoutGuide.bottomAnchor constant:-10],
-        [scroll.leadingAnchor constraintEqualToAnchor:backdrop.leadingAnchor constant:12],
-        [scroll.trailingAnchor constraintEqualToAnchor:backdrop.trailingAnchor constant:-12],
-        [label.topAnchor constraintEqualToAnchor:scroll.topAnchor],
-        [label.bottomAnchor constraintEqualToAnchor:scroll.bottomAnchor],
-        [label.leadingAnchor constraintEqualToAnchor:scroll.leadingAnchor],
-        [label.trailingAnchor constraintEqualToAnchor:scroll.trailingAnchor],
-        [label.widthAnchor constraintEqualToAnchor:scroll.widthAnchor],
-    ]];
-
-    UITapGestureRecognizer *tap =
-        [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(dismiss:)];
-    [backdrop addGestureRecognizer:tap];
-    [window addSubview:backdrop];
++ (BOOL)recording {
+#if PRIMESENGER_DEBUG
+    return [PRMPrefs isEnabled:PRMKeyDebugEnabled];
+#else
+    return NO;
+#endif
 }
 
-+ (void)dismiss:(UITapGestureRecognizer *)recognizer {
-    [recognizer.view removeFromSuperview];
++ (NSDictionary<NSString *, NSNumber *> *)actionCounts {
+    __block NSDictionary *copy = nil;
+    dispatch_sync(gQueue, ^{ copy = [gActionCounts copy]; });
+    return copy ?: @{};
 }
+
++ (NSDictionary<NSString *, NSString *> *)statusLines {
+    __block NSDictionary *copy = nil;
+    dispatch_sync(gQueue, ^{ copy = [gStatus copy]; });
+    return copy ?: @{};
+}
+
++ (NSString *)logText {
+    __block NSString *text = nil;
+    dispatch_sync(gQueue, ^{ text = [gLog componentsJoinedByString:@"\n"]; });
+    return text ?: @"";
+}
+
++ (void)resetCounts {
+    dispatch_sync(gQueue, ^{
+        [gHookCounts removeAllObjects];
+        [gActionCounts removeAllObjects];
+        [gStatus removeAllObjects];
+        [gLog removeAllObjects];
+    });
+}
+
++ (void)buttonTapped {
+#if PRIMESENGER_DEBUG
+    if ([self recording]) {
+        [self openCompatibilityReport];
+        return;
+    }
+#endif
+    [self openSettings];
+}
+
+#if PRIMESENGER_DEBUG
++ (void)handleHold:(UILongPressGestureRecognizer *)hold {
+    if (hold.state != UIGestureRecognizerStateBegan) return;
+    BOOL next = ![PRMPrefs isEnabled:PRMKeyFlexEnabled];
+    [PRMPrefs setEnabled:next forKey:PRMKeyFlexEnabled];
+    [self applyFlexState];
+}
+#endif
 
 @end
 

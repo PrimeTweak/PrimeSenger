@@ -9,11 +9,8 @@ static NSString *const kPSGSilencedKeys = @"psg_silenced_thread_keys";
 
 + (NSString *)identifierForThreadKey:(id)threadKey {
     if (threadKey == nil) return nil;
-    // Measured: MSGThreadsTableThreadKey answers threadKey with a 64-bit
-    // integer. Other carriers fall back to their description.
-    // Only trusted when the method really returns an integer: an object
-    // return cast to a number would turn a pointer into an identifier that
-    // changes at every launch.
+    // Trusted only when threadKey really returns an integer; an object cast to
+    // a number would change at every launch.
     Method method = class_getInstanceMethod(object_getClass(threadKey), @selector(threadKey));
     if (method != NULL) {
         const char *types = method_getTypeEncoding(method);

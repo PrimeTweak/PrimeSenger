@@ -35,7 +35,11 @@ FLEX_FETCH := $(shell test -d $(FLEX_ROOT) || git clone --quiet --depth 1 \
 FLEX_DIRS = $(shell find $(FLEX_ROOT) -type d -not -path '*/Headers*' 2>/dev/null)
 FLEX_SOURCES = $(shell find $(FLEX_ROOT) \( -name '*.m' -o -name '*.mm' \) \
                  -not -path '*/Headers/*' 2>/dev/null)
-FLEX_COUNT = $(words $(FLEX_SOURCES))
+
+# Debug builds carry the Compatibility report. The workflow sets this; a
+# plain make builds Release.
+PRIMESENGER_DEBUG ?= 0
+PRIMESENGER_VERSION := $(shell grep '^Version:' control | cut -d' ' -f2)
 
 PrimeSenger_FILES = Tweak.x $(wildcard Sources/*.x) $(wildcard Sources/*.m) \
                     $(FLEX_SOURCES)
@@ -44,7 +48,8 @@ PrimeSenger_CFLAGS = -fobjc-arc -ISources -Wno-deprecated-declarations \
                      -Wno-unsupported-availability-guard -Wno-strict-prototypes \
                      -Wno-unused-function -Wno-nullability-completeness \
                      -Wno-unused-property-ivar \
-                     -DPSG_FLEX_SOURCES=$(FLEX_COUNT)
+                     -DPRIMESENGER_DEBUG=$(PRIMESENGER_DEBUG) \
+                     -DPRIMESENGER_VERSION=\"$(PRIMESENGER_VERSION)\"
 
 # fleXD builds cleanly under its own settings, which do not use -Werror.
 # Theos does, so any warning in its 182 sources stops the build, and they

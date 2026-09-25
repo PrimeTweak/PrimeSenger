@@ -1,25 +1,5 @@
-// Media permission gates. Messenger performs the save, share or forward
-// itself once these return YES, so nothing here implements any of them.
-//
-// Every gate has the same shape, so the body lives in one helper rather than
-// in a dozen copies. A refusal becomes an allowance; an allowance is left
-// alone, so the switch can only ever open a door, never close one.
-//
-// Signatures taken from the host binary. All thirteen are present on both
-// LSMediaViewController and LSMediaVideoViewController:
-//   -[LSMediaViewController canSaveMedia]              B16@0:8
-//   -[LSMediaViewController canShareMedia]             B16@0:8
-//   -[LSMediaViewController canForwardMedia]           B16@0:8
-//   -[LSMediaViewController canCopyMedia]              B16@0:8
-//   -[LSMediaViewController canEditMedia]              B16@0:8
-//   -[LSMediaViewController canReplyMedia]             B16@0:8
-//   -[LSMediaViewController canGetInfo]                B16@0:8
-//   -[LSMediaViewController canShowLiveText]           B16@0:8
-//   -[LSMediaViewController canMediaAddToStory]        B16@0:8
-//   -[LSMediaViewController canMediaAddToSharedAlbum]  B16@0:8
-//   -[LSMediaViewController canOpenUnifiedShareSheet]  B16@0:8
-//   -[LSMediaViewController isContentCensored]         B16@0:8
-//   -[LSMediaViewController markViewOnceMessageAsOpened:]  v24@0:8@16
+// Media permission gates. Messenger performs each action itself once its
+// gate answers YES; a refusal becomes an allowance, never the reverse.
 
 #import "PSGMedia.h"
 #import "PRMPrefs.h"
@@ -106,23 +86,15 @@ BOOL PSGCensorGate(BOOL original, NSString *name) {
     return PSGCensorGate(original, @"censored");
 }
 
-// Twelfth gate. Its action, viewMediaInThread, is measured present on 575.
+// View in chat, from the media viewer.
 - (BOOL)canViewMediaInThread {
     BOOL original = %orig;
     return PSGUnlockGate(original, @"canViewInThread");
 }
 
-// A View once photo or video burns when the host marks it as opened, and
-// this is the method that marks it. Swallowing the call leaves the media
-// unmarked, so it stays openable.
-//
-// The original is called on every other path, so the media behaves normally
-// while the switch is off.
+// A View once photo burns when the host marks it opened. Skipping that
+// call keeps it openable; with the switch off it runs as usual.
 - (void)markViewOnceMessageAsOpened:(id)message {
-    // Counted before the switch is read, so a zero here means the host never
-    // called the method rather than the switch being off. Whether the
-    // selector exists at all on this build is reported separately, at load,
-    // by the presence report in PSGAudit.x.
     [PRMDebug noteHook:@"view once"];
     [PRMDebug setStatus:[NSString stringWithFormat:@"called, arg=%@",
                          message ? NSStringFromClass([message class]) : @"nil"]
@@ -139,9 +111,7 @@ BOOL PSGCensorGate(BOOL original, NSString *name) {
 
 #pragma mark - Meta AI in the media menu
 
-// The media menu offers Ask Meta AI through this gate. Measured on 575:
-// B16@0:8, 7 instructions, 1 call. Closed rather than opened, like the
-// censorship gate above.
+// Ask Meta AI in the media menu, closed like the censorship gate.
 %hook LSThreadMediaViewerBucketViewController
 
 - (BOOL)canOpenMetaAIChat {

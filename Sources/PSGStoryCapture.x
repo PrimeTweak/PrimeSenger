@@ -1,9 +1,5 @@
-// Screenshot handling for the story viewer. This lives on the ephemeral
-// media controller, not on the application object: MSGApplication exposes
-// no handler at all in this build.
-// Signatures taken from the binary:
-//   -[MSGEphemeralMediaViewController _didCaptureContent]            v16@0:8
-//   -[MSGEphemeralMediaViewController _screenCaptureStateDidChange:]  v24@0:8@16
+// Screenshot and recording notices from the disappearing photo viewer and
+// the full-screen media viewer.
 
 #import "PRMPrefs.h"
 #import "PRMDebug.h"
@@ -33,13 +29,7 @@
 
 #pragma mark - The media viewer
 
-// Measured on 575: the fullscreen media viewer has the same two handlers as
-// the ephemeral one, and they were never covered. _didCaptureContent is 14
-// instructions with no calls, the screen recording state change is the one
-// that reaches the network.
-//
-//   -[LSMediaViewerViewController _didCaptureContent]              v16@0:8
-//   -[LSMediaViewerViewController _screenCaptureStateDidChange:]   v24@0:8@16
+// The full-screen media viewer, which has the same two handlers.
 %hook LSMediaViewerViewController
 
 - (void)_didCaptureContent {

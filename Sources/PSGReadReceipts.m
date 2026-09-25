@@ -37,16 +37,8 @@ static const NSTimeInterval kWindow = 2.0;
     }
 }
 
-// The receipt is sent by the host's own read path, gated on the flag. No
-// exported C entry point could be reached: the symbol named in the binary
-// strings is not in the symbol table. Instead the flag is lowered and the
-// host is asked to rerun the path it already runs on appearance and on
-// return to the foreground.
-//
-// Measured on MSGMessageListViewController:
-//   -viewDidAppear:                     v20@0:8B16
-//   -_handleApplicationDidBecomeActive: v24@0:8@16
-//   -_notifyObserversDidSetAsRead:      v20@0:8B16
+// The receipt goes through the host's own read path: the flag is lowered
+// and the paths it runs on appearance are asked to run again.
 
 + (BOOL)sendReceiptOn:(id)messageList {
     id target = messageList ?: gLiveController;
@@ -62,8 +54,7 @@ static const NSTimeInterval kWindow = 2.0;
 
     NSMutableArray<NSString *> *ran = [NSMutableArray array];
 
-    // Rerun the paths the host itself uses. Each is measured to exist; any
-    // that does not respond is skipped and reported.
+    // Any path that does not respond is skipped.
     SEL becameActive = @selector(_handleApplicationDidBecomeActive:);
     if ([target respondsToSelector:becameActive]) {
         ((void (*)(id, SEL, id))objc_msgSend)(target, becameActive, nil);

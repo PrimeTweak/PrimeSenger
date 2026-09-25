@@ -1,9 +1,5 @@
-// Read receipts, story seen markers, and the typing indicator.
-// Signatures taken from the binary:
-//   -[MSGMessageListViewController _notifyObserversDidSetAsRead:]  v20@0:8B16
-//   -[MSGStoryBucketsDataManager markStoriesAsSeen:bucketID:isStoryPeekView:completion:]
-//                                                                  v44@0:8@16@24B32@?36
-//   -[MSGStoryBucketsDataManager markTabViewTimeAndClearBadgeCount] v16@0:8
+// Read receipts, story views, screenshot notices and the typing indicator,
+// cut where the app publishes them rather than where it displays them.
 
 #import "PRMPrefs.h"
 #import "PRMDebug.h"
@@ -26,13 +22,8 @@
     %orig;
 }
 
-// The host carries its own flag for this, passed to the initialiser as
-// disableReadReceipts: and kept in the _disableReadReceipts ivar. Setting it
-// stops the receipt at the source; suppressing -_notifyObserversDidSetAsRead:
-// only silences local observers, so the receipt still reached the server.
-// Measured on 575: the message list handles a screenshot itself, 64
-// instructions and 32 calls, which is the notice sent in an encrypted chat.
-// The ephemeral viewer hook in PSGStoryCapture.x never saw this path.
+// The message list's own screenshot handler, which sends the notice in an
+// encrypted chat.
 - (void)_handleUserDidTakeScreenshot:(id)note {
     [PRMDebug noteHook:@"screenshot chat"];
     if ([PRMPrefs isEnabled:PRMKeyBlockScreenshotNotice]) {
@@ -43,6 +34,8 @@
     %orig;
 }
 
+// Sets the host's own disableReadReceipts flag, which stops the receipt at
+// the source rather than only silencing local observers.
 - (void)viewDidLoad {
     %orig;
 
@@ -99,21 +92,8 @@
 
 #pragma mark - What actually leaves the phone
 
-// The hooks above act on what the message list shows. These act on what the
-// app publishes, measured on 575 as the real emitters:
-//
-//   +[MCMTypingIndicatorPublishEventMutationBuilder builderWithIsTyping:threadId:]
-//       @32@0:8@16@24   the typing event itself
-//   -[MSGSendMessageTextOptionalInputBuilder withMarkRead:]      @20@0:8B16
-//   -[MSGSendMessageStickerOptionalInputBuilder withMarkRead:]   @20@0:8B16
-//       a send carries its own mark-as-read flag
-//   -[MPESettings _isTypingIndicatorsDisabledFromPersistentStorage]   B16@0:8
-//   -[MPESettings _isReadReceiptsDisabledFromPersistentStorage]       B16@0:8
-//       the account settings encrypted chats consult
-//
-// The builder is hooked as both a class and an instance method: whichever
-// one the host implements is the live one, the other is inert, and the
-// counters say which fired.
+// The emitters: the typing event, the mark-as-read flag every send carries,
+// and the account settings encrypted chats consult.
 
 static id PSGTypingArgument(id typing, NSString *side) {
     [PRMDebug noteHook:[@"typing publish " stringByAppendingString:side]];

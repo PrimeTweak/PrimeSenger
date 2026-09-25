@@ -1,30 +1,5 @@
-// Manual read receipt control.
-//
-// While Read receipts are hidden and manual mode is on, an eye is placed
-// beside the call buttons. Tapping it opens the one-shot gate and invokes
-// the receipt on the live message list.
-//
-// Measured layout of the thread bar:
-//   MDSNavigationBarView            x0   440x44  tint 0.00/0.39/0.82
-//     MSGNavigationThreadViewTitleView x16 364x44 tint 0.69/0.25/0.13
-//       UIStackView                  x305  80x36
-//         LSRTCCallButton            x305  36x36  audio
-//         LSRTCCallButton            x349  36x36  video
-//     UIStackView                    x388  36x44  tint 0.00/0.39/0.82
-//       MSGIconBarButtonItemView            bar items
-//
-// The call buttons live in a stack inside the title view, not among the bar
-// items, and take their tint from that view. An item added through
-// navigationItem lands in the trailing stack instead, which is why it sat
-// at x388 in the bar's own blue. The eye joins the call button stack, so
-// position and tint both come from the host.
-//
-// Signatures taken from the binary:
-//   -[MSGThreadViewController viewDidLoad]                         v16@0:8
-//   -[MSGThreadViewController viewDidLayoutSubviews]               v16@0:8
-//   -[MSGMessageListViewController _notifyObserversDidSetAsRead:]  v20@0:8B16
-//   -[MSGThreadViewNavBarManager updateRightBarButtonItems]        v16@0:8
-//   -[MSGThreadViewNavBarManager delegate]                         @16@0:8
+// The manual read receipt eye, placed in the call button stack so its
+// position and tint come from the host. Tapping it sends one receipt.
 
 #import "PRMPrefs.h"
 #import "PRMDebug.h"
@@ -134,48 +109,12 @@ static BOOL PSGManualAllowed(void) {
 
 #pragma mark - Insertion trace
 
-// Why the eye is recreated, measured in one pass rather than one build per
-// hypothesis. Each insertion records which controller asked, which stack it
-// landed in, and what became of the eye inserted before it.
-//
-// A short identifier stands in for each object so the trace reads without
-// pointers. Addresses are only ever compared, never dereferenced, so an
-// identifier survives its object. An address freed and reused would collapse
-// two objects onto one identifier: within a single conversation the
-// controller stays alive throughout, so the reading holds there.
-static NSUInteger PSGIdentifierFor(id object,
-                                   NSMutableDictionary<NSNumber *, NSNumber *> *table) {
-    if (object == nil) return 0;
-    NSNumber *address = @((unsigned long long)(uintptr_t)object);
-    NSNumber *known = table[address];
-    if (known != nil) return known.unsignedIntegerValue;
-    NSUInteger next = table.count + 1;
-    table[address] = @(next);
-    return next;
-}
-
-// The eye inserted last time, held weakly so the trace never keeps a view
-// alive and never reports a dead one as present.
-static __weak UIButton *gPreviousEye = nil;
-
-// detached  the host dropped it, so the stack was rebuilt or emptied
-// other     it is still on screen in a different stack, so the search moved
-// same      it is in the stack being written to, which the tag test should
-//           have caught, so the tag was lost
-static NSString *PSGPreviousEyeState(UIStackView *stack) {
-    UIButton *previous = gPreviousEye;
-    if (previous == nil) return @"none";
-    if (previous.superview == nil) return @"detached";
-    if (previous.superview == stack) return @"same";
-    return @"other";
-}
-
+// The eye is rebuilt when the bar rebuilds, so it is placed again on every
+// pass rather than assumed to persist.
 #pragma mark - Placement
 
-// No tintColor is set: the button inherits the title view's, as the call
-// buttons beside it do.
-// Struck through when manual sending is off, so the state reads without
-// opening settings.
+// Inherits the title view's tint like the call buttons; struck through
+// when manual sending is off.
 static void PSGApplyEyeGlyph(UIButton *button) {
     BOOL allowed = PSGManualAllowed();
     UIImageSymbolConfiguration *configuration =
@@ -186,7 +125,7 @@ static void PSGApplyEyeGlyph(UIButton *button) {
     if (glyph != nil) {
         [button setImage:glyph forState:UIControlStateNormal];
     } else {
-        [button setTitle:allowed ? @"Seen" : @"—" forState:UIControlStateNormal];
+        [button setTitle:allowed ? @"Seen" : @"\u2014" forState:UIControlStateNormal];
     }
     button.alpha = allowed ? 1.0 : 0.45;
 }
@@ -220,8 +159,7 @@ static UIButton *PSGMakeEyeButton(PSGReceiptEye *eye) {
 static const NSInteger kPSGBellTag = 0x50534702;
 static const char kPSGBellTarget;
 
-// The thread key of the host, as the string PSGSilence keys on. Measured:
-// MSGThreadViewController answers threadQueryKey with an object.
+// The thread key of the host, as the string PSGSilence keys on.
 static NSString *PSGThreadIdentifier(UIViewController *host) {
     if (![host respondsToSelector:@selector(threadQueryKey)]) return nil;
     id key = ((id (*)(id, SEL))objc_msgSend)(host, @selector(threadQueryKey));
@@ -327,6 +265,7 @@ static void PSGSyncBell(UIViewController *host, NSString *pass) {
 }
 
 static void PSGSyncEye(UIViewController *host, NSString *pass) {
+    (void)pass;
     UIView *root = host.viewIfLoaded.window;
     if (root == nil) return;
 
@@ -339,11 +278,7 @@ static void PSGSyncEye(UIViewController *host, NSString *pass) {
         return;
     }
 
-    if (stack == nil) {
-        [PRMDebug setStatus:[NSString stringWithFormat:@"call button stack not found at %@", pass]
-                     forKey:@"thread bar"];
-        return;
-    }
+    if (stack == nil) return;
 
     if (existing != nil) {
         PSGApplyEyeGlyph(existing);
@@ -361,40 +296,6 @@ static void PSGSyncEye(UIViewController *host, NSString *pass) {
 
     // Index 0 places it before the call buttons.
     [stack insertArrangedSubview:button atIndex:0];
-
-    [PRMDebug noteHook:@"manual receipt"];
-
-    static NSUInteger insertions = 0;
-    static NSMutableDictionary<NSNumber *, NSNumber *> *hostIds = nil;
-    static NSMutableDictionary<NSNumber *, NSNumber *> *stackIds = nil;
-    static NSMutableArray<NSString *> *trace = nil;
-    if (trace == nil) {
-        hostIds = [NSMutableDictionary dictionary];
-        stackIds = [NSMutableDictionary dictionary];
-        trace = [NSMutableArray array];
-    }
-
-    // Read before the new eye replaces it.
-    NSString *previous = PSGPreviousEyeState(stack);
-    gPreviousEye = button;
-    insertions++;
-
-    [trace addObject:[NSString stringWithFormat:@"h%lu/s%lu/%@/%@",
-                      (unsigned long)PSGIdentifierFor(host, hostIds),
-                      (unsigned long)PSGIdentifierFor(stack, stackIds),
-                      previous, pass]];
-    while (trace.count > 8) [trace removeObjectAtIndex:0];
-
-    // One line carries the whole measurement: how many insertions, how many
-    // distinct controllers and stacks were seen, and the last eight in order.
-    [PRMDebug setStatus:[NSString stringWithFormat:
-                         @"%lu ins | %lu hosts | %lu stacks | %lu buttons | %@",
-                         (unsigned long)insertions,
-                         (unsigned long)hostIds.count,
-                         (unsigned long)stackIds.count,
-                         (unsigned long)stack.arrangedSubviews.count,
-                         [trace componentsJoinedByString:@" "]]
-                 forKey:@"thread bar"];
 }
 
 #pragma mark - Hooks
@@ -416,17 +317,8 @@ static void PSGSyncEye(UIViewController *host, NSString *pass) {
 
 %end
 
-// Measured: the host rebuilds its bar items 25 times across three
-// conversations and the eye was recreated 25 times, one for one. Every
-// rebuild drops it, and putting it back from viewDidLayoutSubviews puts it
-// back a frame later, which is the flash.
-//
-// Placing it from here runs it in the same pass as the rebuild. The layout
-// pass above is kept as a net for anything this does not reach, so the worst
-// case is the behaviour that was already shipping.
-//
-// This selector is hooked in PSGThreadProbe.x as well, which only reads.
-// Both chain through %orig and neither depends on running first.
+// The host drops the eye whenever it rebuilds its bar, so it is placed
+// again in the same pass; the layout hook above is a fallback.
 %hook MSGThreadViewNavBarManager
 
 - (void)updateRightBarButtonItems {
@@ -438,9 +330,7 @@ static void PSGSyncEye(UIViewController *host, NSString *pass) {
     static BOOL syncing = NO;
     if (syncing) return;
 
-    // Logos declares the hooked class forward only, so self carries an
-    // incomplete type and cannot be messaged. It is held as id first; every
-    // send then goes through that, as the probe already does.
+    // The hooked class is forward-declared, so self is held as id.
     id manager = self;
     if (![manager respondsToSelector:@selector(delegate)]) return;
     id owner = ((id (*)(id, SEL))objc_msgSend)(manager, @selector(delegate));

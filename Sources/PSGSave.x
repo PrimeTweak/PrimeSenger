@@ -1,26 +1,5 @@
-// Saving pictures Messenger gives no way to keep.
-//
-// Three surfaces were missing: story photos, disappearing photos, and profile
-// pictures. Everything else already saves natively once Media actions opens
-// the host's own buttons.
-//
-// Measured: LSStoryBucketViewControllerBase and MSGEphemeralMediaViewController
-// are both built with a mediaVCGenerator, and the generator is
-// LSMediaViewerDefaultMediaViewControllerGenerator. Stories, disappearing
-// media and ordinary fullscreen photos are therefore shown by the same
-// LSMediaPhotoViewController, which carries:
-//
-//   ivar _networkImageView : LSNetworkImageView
-//
-// So one hook covers all three. The profile picture viewer is the exception:
-// measured, it shows a plain UIImageView and no LSNetworkImageView, so it
-// keeps its own path, matched by name the way PSGScreens.x matches the Meta
-// AI controller.
-//
-// Two routes were tried and abandoned before this one, both measured:
-// MSGPlusX's long press on LSNetworkImageView installed 204 recognisers in a
-// session and fired zero times, and a row added to the host's own long press
-// menu was counted and measured but its cell was never requested.
+// A save button on pictures Messenger gives no way to keep. Story and
+// disappearing photos share one viewer; profile pictures have their own.
 
 #import "PRMPrefs.h"
 #import "PRMDebug.h"
@@ -165,12 +144,8 @@ static void PSGAddSaveButton(UIView *root, UIView *carrier, NSString *key) {
 
 #pragma mark - The profile picture viewer
 
-// The one screen the shared viewer does not serve: measured, it shows a plain
-// UIImageView. It is a Swift class, matched by name rather than hooked, the
-// way PSGScreens.x matches the Meta AI controller.
-// Resolved once by its runtime name, so the check below is a pointer walk
-// rather than a string build and compare on every layout pass of every view
-// controller in the app. The name is the one NSStringFromClass reported.
+// The profile picture viewer, a Swift class matched by its runtime name and
+// resolved once, so each layout pass only compares pointers.
 static Class PSGProfileViewerClass(void) {
     static Class resolved = Nil;
     static BOOL tried = NO;
@@ -191,8 +166,7 @@ static Class PSGProfileViewerClass(void) {
     if (wanted != Nil) {
         if (![self isKindOfClass:wanted]) return;
     } else {
-        // The name lookup failed on this build: fall back to the string match
-        // once per class, remembered so the cost is paid a single time.
+        // Falls back to a one-time name match if the lookup fails.
         static Class matched = Nil;
         if (matched == Nil
             && [NSStringFromClass([self class]) containsString:@"LSProfilePictureViewController"]) {
@@ -227,9 +201,8 @@ static Class PSGProfileViewerClass(void) {
 // read through the runtime rather than messaged.
 %hook LSMediaPhotoViewController
 
-// Not a saving concern, but this class is hooked here and Logos allows one
-// block per class per file. Measured on 575: the photo viewer handles a
-// screenshot itself, 7 instructions, 4 calls.
+// Screenshot notice from the photo viewer. Kept here because Logos allows
+// one block per class per file.
 - (void)_handleUserDidTakeScreenshot:(id)note {
     [PRMDebug noteHook:@"screenshot photo"];
     if ([PRMPrefs isEnabled:PRMKeyBlockScreenshotNotice]) {

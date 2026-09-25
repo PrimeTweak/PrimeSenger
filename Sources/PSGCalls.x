@@ -1,10 +1,5 @@
-// Call confirmation.
-// Signature taken from the binary:
-//   -[LSRTCCallButton handleButtonTap]  v16@0:8
-//
-// The original is never invoked from inside the alert block: Logos cannot
-// expand %orig there because the selector argument is out of scope. The
-// tap is replayed through the runtime instead, guarded by a flag.
+// Asks before a call starts. The alert replays the tap through the runtime,
+// since the original cannot be invoked from inside its completion block.
 
 #import "PRMPrefs.h"
 #import "PRMDebug.h"

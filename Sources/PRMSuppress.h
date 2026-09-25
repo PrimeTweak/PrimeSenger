@@ -1,9 +1,5 @@
-// Suppression by controller identity.
-//
-// Two approaches were measured to work where method-level hooks did not:
-// matching a controller by class name and hiding its view, and filtering a
-// row list by asking each row which controller it owns. Both need the same
-// lookup, so it lives here and is shared across the Prime line.
+// Suppression by controller identity: a controller matched by class name
+// has its view hidden, and a row it owns is dropped from lists.
 
 #import <Foundation/Foundation.h>
 

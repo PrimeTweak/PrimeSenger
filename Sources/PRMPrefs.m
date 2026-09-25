@@ -13,16 +13,13 @@ NSString *const PRMKeyUploadHD              = @"psg_upload_hd";
 // Stored under its original name so an existing setting is not lost.
 NSString *const PRMKeySaveButton            = @"psg_hold_to_save";
 NSString *const PRMKeyReadOnReply           = @"psg_read_on_reply";
-NSString *const PRMKeyAppearOffline         = @"psg_appear_offline";
 NSString *const PRMKeyBlockViewOnceSend     = @"psg_block_view_once_send";
 NSString *const PRMKeySoundOnOpen           = @"psg_sound_on_open";
 NSString *const PRMKeyStorySound            = @"psg_story_sound";
 NSString *const PRMKeySpeed                 = @"psg_speed";
-NSString *const PRMKeySpeed15               = @"psg_speed_15";
 NSString *const PRMKeySpeed2                = @"psg_speed_2";
 NSString *const PRMKeyHideMetaAIMedia       = @"psg_hide_meta_ai_media";
 NSString *const PRMKeySilencedChats         = @"psg_silenced_chats";
-NSString *const PRMKeyDebugActions          = @"psg_debug_actions";
 NSString *const PRMKeyHideStoryReplyBar     = @"psg_hide_story_reply_bar";
 NSString *const PRMKeyHidePeopleYouMayKnow  = @"psg_hide_people_you_may_know";
 NSString *const PRMKeyCallConfirmation      = @"psg_call_confirmation";
@@ -37,7 +34,6 @@ NSString *const PRMKeyHideTabStories       = @"psg_hide_tab_stories";
 NSString *const PRMKeyHideTabNotifications = @"psg_hide_tab_notifications";
 NSString *const PRMKeyHideTabMenu          = @"psg_hide_tab_menu";
 NSString *const PRMKeyGlassTabBar          = @"psg_glass_tab_bar";
-NSString *const PRMKeyFloatingButton       = @"psg_floating_button";
 NSString *const PRMKeyDebugEnabled          = @"psg_debug_enabled";
 NSString *const PRMKeyFlexEnabled          = @"psg_flex_enabled";
 NSString *const PRMKeyNoAutoKeyboard       = @"psg_no_auto_keyboard";
@@ -58,16 +54,13 @@ NSString *const PRMKeyNoAutoKeyboard       = @"psg_no_auto_keyboard";
         PRMKeyUploadHD,
         PRMKeySaveButton,
         PRMKeyReadOnReply,
-        PRMKeyAppearOffline,
         PRMKeyBlockViewOnceSend,
         PRMKeySoundOnOpen,
         PRMKeyStorySound,
         PRMKeySpeed,
-        PRMKeySpeed15,
         PRMKeySpeed2,
         PRMKeyHideMetaAIMedia,
         PRMKeySilencedChats,
-        PRMKeyDebugActions,
         PRMKeyHideStoryReplyBar,
         PRMKeyHidePeopleYouMayKnow,
         PRMKeyCallConfirmation,
@@ -82,7 +75,6 @@ NSString *const PRMKeyNoAutoKeyboard       = @"psg_no_auto_keyboard";
         PRMKeyHideTabNotifications,
         PRMKeyHideTabMenu,
         PRMKeyGlassTabBar,
-        PRMKeyFloatingButton,
         PRMKeyDebugEnabled,
         PRMKeyFlexEnabled,
         PRMKeyNoAutoKeyboard
@@ -116,8 +108,6 @@ NSString *const PRMKeyNoAutoKeyboard       = @"psg_no_auto_keyboard";
 + (void)initialize {
     if (self != [PRMPrefs class]) return;
     [self migrateLegacyKeys];
-    // Logging defaults on.
-    [[NSUserDefaults standardUserDefaults] registerDefaults:@{PRMKeyDebugEnabled: @YES}];
 }
 
 + (BOOL)isEnabled:(NSString *)key {

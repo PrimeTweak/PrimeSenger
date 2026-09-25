@@ -1,20 +1,5 @@
-// Tab bar. A real UITabBar is placed inside the host's custom bar and the
-// host's own drawing is hidden behind it.
-//
-// Measured: a standalone UITabBar, outside any UITabBarController, still
-// receives the full iOS 26 treatment — its tree contains _UILiquidLensView,
-// _UITabBarPlatterView and _UITabBarVisualProvider_Floating. The host's
-// items already inherit UITabBarItem, so they are handed over unchanged.
-//
-// Selection is routed back through -didTapButton:, the host's own handler,
-// so Messenger navigates exactly as it does on a native tap.
-//
-// Signatures taken from the binary and the runtime scan:
-//   -[MDSModernTabBar layoutSubviews]     v16@0:8
-//   -[MDSModernTabBar items]              @16@0:8
-//   -[MDSModernTabBar selectedItem]       @16@0:8
-//   -[MDSModernTabBar viewForItem:]       @24@0:8@16
-//   -[MDSModernTabBar didTapButton:]      v24@0:8@16
+// A system UITabBar placed inside the host's own bar carries the Liquid
+// Glass material; tabs are hidden by their accessibility label.
 
 #import "PRMPrefs.h"
 #import "PRMDebug.h"
@@ -185,7 +170,6 @@ static void PSGApplyNativeBar(UIView *host) {
 - (void)layoutSubviews {
     %orig;
     [PRMDebug noteHook:@"tab bar layout"];
-    [PRMDebug setStatus:@"reached, PSGTabBar 1.0.1" forKey:@"tab bar hook"];
 
     UIView *host = (UIView *)self;
     PSGApplyNativeBar(host);

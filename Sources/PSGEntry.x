@@ -1,11 +1,5 @@
-// Entry point into the tweak's settings.
-//
-// MSGSettingsViewController is a split-view container and exposes no table
-// methods, so the entry point is a navigation bar button rather than a row.
-// The glyph matches the weight of the bar's other items.
-//
-// Signature taken from the binary:
-//   -[MSGSettingsViewController viewDidLoad]  v16@0:8
+// Opens PrimeSenger from a bolt in Messenger's settings bar, since that
+// screen is a split-view container with no table rows to add to.
 
 #import "PSGSettings.h"
 #import "PRMDebug.h"

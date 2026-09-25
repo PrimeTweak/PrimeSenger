@@ -1,11 +1,5 @@
-// Read receipts.
-//
-// The host keeps its own flag, _disableReadReceipts, set from the thread's
-// initialiser. PSGAnonymity writes it on viewDidLoad, which stops the
-// receipt at the source rather than only silencing local observers.
-//
-// Manual mode lowers that flag for a short window so the host's own read
-// path can run once, then raises it again.
+// Manual receipts: the host's _disableReadReceipts flag is lowered for a
+// short window so its own read path sends a single receipt.
 
 #import <Foundation/Foundation.h>
 

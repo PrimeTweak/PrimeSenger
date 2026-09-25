@@ -1,7 +1,6 @@
-// On-device debugger. No console is available on a sideloaded build, so
-// everything is reported on screen: a rolling log, per-hook fire counts,
-// class and method inspection, and object dumps for structures whose
-// shape is not yet known.
+// On-device debugging for a sideloaded build, where no console exists: a
+// rolling log, per-hook counters and status lines, recorded only while
+// Record activity is on.
 
 #import <UIKit/UIKit.h>
 
@@ -22,35 +21,23 @@
 // Logs the class of every element of a collection.
 + (void)dumpCollection:(id)collection label:(NSString *)label;
 
-// Walks the key window and logs every view class with its frame, so an
-// on-screen element can be identified by looking at it.
-+ (void)dumpViewHierarchy;
-
 // Records that a screen appeared, and captures its view tree the first
 // time that screen class is seen.
 + (void)noteScreen:(NSString *)className view:(UIView *)view;
 
-// Dumps every loaded class whose name matches one of the built-in family
-// patterns, with its selectors. One call replaces a round of builds spent
-// asking what a class exposes.
-+ (void)runFullScan;
-
-// Places the entire report on the pasteboard. Returns its length so the
-// caller can confirm something was copied.
-+ (NSUInteger)copyReportToPasteboard;
-
-// Reports whether the bundle opts out of the current design system.
-+ (void)reportDesignMode;
-
-// One-line state per subsystem, shown at the top of the report.
+// One line of state per subsystem, included in the copied report.
 + (void)setStatus:(NSString *)value forKey:(NSString *)name;
+// YES while Record activity is on; always NO in a release build.
++ (BOOL)recording;
++ (NSDictionary<NSString *, NSNumber *> *)actionCounts;
++ (NSDictionary<NSString *, NSString *> *)statusLines;
++ (NSString *)logText;
++ (void)resetCounts;
+
 
 
 // Re-places the floating button after the keyboard has moved.
 + (void)keyboardFrameChanged:(NSNotification *)note;
-
-// Records whether fleXD is linked in, for the report.
-+ (void)reportFlexPresence;
 
 // Glides the floating button back to its slot after a manual move.
 + (void)returnButtonToSlot;
@@ -60,19 +47,10 @@
 + (void)installButton;
 
 
-// Opens the report.
-+ (void)present;
-
 @end
 
-// Implemented in PRMLauncher.m, which is where the Messenger-specific
-// settings screen is known. Declared on a category so the main
-// implementation is not held responsible for defining them.
-// fleXD, resolved at runtime so a missing clone cannot break the build.
+// FLEX, resolved at runtime so a build without it still loads.
 @interface PRMDebug (PSGFlex)
-
-+ (BOOL)flexAvailable;
-+ (void)toggleFlex;
 
 // Brings the explorer in line with the stored preference.
 + (void)applyFlexState;
@@ -89,3 +67,9 @@
 + (void)refreshFloatingButton;
 
 @end
+
+#if PRIMESENGER_DEBUG
+@interface PRMDebug (PSGCompatibility)
++ (void)openCompatibilityReport;
+@end
+#endif

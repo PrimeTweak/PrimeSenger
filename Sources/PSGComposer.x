@@ -1,16 +1,5 @@
-// Keyboard on thread entry.
-//
-// Messenger raises the keyboard as soon as a conversation opens. The host
-// names that path itself, so the automatic raise is suppressed without
-// touching the one a tap on the composer triggers.
-//
-// Signatures taken from the binary:
-//   -[LSComposerViewController _autoOpenKeyboardAfterOpenComposerView]         v16@0:8
-//   -[LSComposerViewController _scheduleAutoOpenKeyboardAfterOpenComposerView] v16@0:8
-//
-// Only these two are suppressed. -_makeTextViewFirstResponder and
-// -textViewDidBeginEditing: are left alone, so tapping the bar still opens
-// the keyboard, and a restored draft still gets focus when the user asks.
+// Keeps the keyboard down when a chat opens. Only the automatic raise is
+// suppressed; a tap on the message field still opens it.
 
 #import "PRMPrefs.h"
 #import "PRMDebug.h"
@@ -49,17 +38,8 @@ static BOOL PSGSuppressAutoKeyboard(void) {
     %orig;
 }
 
-// Whether the field holds focus. The dressed button is wanted while the
-// keyboard is up and not once it is gone, and the host names both edges
-// itself rather than leaving them to be inferred from the keyboard frame.
-// Mark read on reply. The pill in the settings raises exactly one of the two
-// keys, so this and the manual eye never run for the same chat.
-//
-//   -[LSComposerViewController _sendMessageType:traceId:]  v32@0:8@16@24
-//
-// One point for every send. The receipt goes through the same primitive the
-// eye uses: the host's flag is lowered for a moment, its own read path runs,
-// and the flag goes back up.
+// On reply mode: sending a message sends the read receipt through the same
+// path the manual eye uses.
 - (void)_sendMessageType:(id)type traceId:(id)traceId {
     %orig;
     [PRMDebug noteHook:@"read on reply"];
@@ -77,6 +57,8 @@ static BOOL PSGSuppressAutoKeyboard(void) {
                  forKey:@"read on reply"];
 }
 
+// Tracks whether the field has focus: the send button is shown while the
+// keyboard is up and not once it is gone.
 - (void)textViewDidBeginEditing:(id)textView {
     %orig;
     PSGComposerFocused = YES;
@@ -101,24 +83,8 @@ static BOOL PSGSuppressAutoKeyboard(void) {
 
 #pragma mark - Quick reaction
 
-// With the field empty the composer shows an emoji that sends on one tap.
-//
-//   -[LSComposerActionView setAction:animated:]  v28@0:8q16B24
-//   ivar _sendButton : UIButton
-//
-// Two ways of revealing the host's own send button were measured and both
-// failed. Writing hidden, enabled and frame back after the host produced a
-// flash, since the host wrote again on the next pass. Giving the button a
-// subclass that refuses those writes was bypassed outright: the swap lands,
-// the status reads pinned, and the view tree still shows the button at 0x0
-// and hidden, because the flag is backed by the layer and the host reaches
-// it another way.
-//
-// So the host is no longer fought. The button it shows and sizes while the
-// field is empty is the emoji, and that is the one dressed as a send button:
-// it takes the send button's image and its target, and loses its title. The
-// real send button is left untouched, and the host still brings it up by
-// itself once text is typed.
+// With the field empty the composer shows a one-tap emoji. It is dressed as
+// the send button while the keyboard is up, and hidden once it is down.
 
 static void PSGDressEmojiAsSend(UIView *view) {
     Ivar slot = class_getInstanceVariable(object_getClass(view), "_sendButton");
@@ -210,15 +176,8 @@ static void PSGDressEmojiAsSend(UIView *view) {
 
 #pragma mark - Read on reaction
 
-// A reaction is a reply too. Two paths on this build, both measured:
-//
-//   -[MSGFacebookReactionView didTap]        v16@0:8     a pick in the tray
-//   -[MSGMessageRowCell viewDidDoubleTap:]   v24@0:8@16  double tap to like
-//
-// The reaction itself is sent through a block the tray is built with, not
-// through a method, so the two user gestures are watched instead. Each
-// reuses the same receipt primitive as the send hook above, and the same
-// pill state, so nothing fires unless On reply is the chosen mode.
+// On reply mode: a reaction counts as a reply. The tray pick and the double
+// tap to like are watched, since the reaction itself goes through a block.
 
 static void PSGReceiptForReaction(NSString *source) {
     [PRMDebug noteHook:@"read on reaction"];

@@ -1,12 +1,5 @@
-// fleXD entry point.
-//
-// The explorer is reached by a long press on the floating button, so the
-// short tap keeps opening settings. FLEX is resolved through the runtime
-// rather than imported, so this file compiles whether or not vendor/FLEX
-// was cloned, and the tweak still runs if the clone failed.
-//
-// Measured from the fleXD 6.1.0 podspec:
-//   FLEXManager  +sharedManager  -showExplorer  -hideExplorer  -isHidden
+// FLEX, opened from its settings row, or by holding the floating button
+// while recording. Resolved at runtime, so a build without it still loads.
 
 #import "PRMPrefs.h"
 #import "PRMDebug.h"
@@ -15,14 +8,8 @@
 
 @implementation PRMDebug (PSGFlex)
 
-+ (BOOL)flexAvailable {
-    return NSClassFromString(@"FLEXManager") != Nil;
-}
-
-// Driven by the preference rather than by the explorer's own state. The
-// earlier version read isHidden and inverted it, so a relaunch left the
-// explorer closed with the switch still on, and turning the switch off
-// opened it.
+// Driven by the stored preference rather than the explorer's own state, so
+// a relaunch restores what was chosen.
 + (void)applyFlexState {
     Class manager = NSClassFromString(@"FLEXManager");
     if (manager == Nil) {
@@ -81,12 +68,6 @@
         ((void (*)(id, SEL))objc_msgSend)(shared, @selector(showExplorer));
         [PRMDebug setStatus:@"shown" forKey:@"flex"];
     }
-}
-
-// Kept for the settings row, which asks for the state to be reapplied
-// after it has written the preference.
-+ (void)toggleFlex {
-    [self applyFlexState];
 }
 
 @end
