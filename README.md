@@ -1,59 +1,26 @@
-# PrimeSenger
+# PrimeDit
 
-A Messenger tweak for privacy, media and a cleaner interface.
+Filters Reddit's feeds and tidies its interface. Built for Reddit 2026.38.
 
-## Requirements
+- **Feed**: promoted posts, recommendations, NSFW, spoilers, suggestion cards, AI answers, visited posts
+- **Filter lists**: keywords, communities, muted users
+- **Posts and comments**: awards, vote counts, deleted comments, AutoMod collapse, colored thread lines
+- **Interface**: pop-ups and nudges, left menu sections
+- **Tabs**: Chat tab, Games tab, launch tab, account switcher, compact tab bar
+- **Refresh**: remember Home position, confirm Home and pull-to-refresh reloads
+- **Backup and reset** of all settings, cache size and auto-clear
+- **FLEX explorer** (fleXD), included in every build
 
-Messenger 575.0.0 on iOS 15.1 or later, sideloaded.
+Settings are in Reddit's Settings, under the **PrimeDit** button.
 
-## Features
-
-Settings open from the bolt at the top of Messenger's settings, or from the
-floating button while the Menu tab is hidden. A switch named after a thing
-is on while that thing is visible; a switch named after an action does it.
-
-**Privacy** — read receipts (with a manual eye, or sent when you reply),
-typing indicator, story views, screenshot alerts.
-
-**Chats** — quick reaction, keep the keyboard closed, confirm before calling,
-upload in HD, View once toggle, a mute bell that silences a chat on this
-phone only.
-
-**Chat list** — stories tray, people you may know, friend suggestions.
-
-**Stories** — reply bar, start stories with sound.
-
-**Media** — unlock greyed-out media actions, a save button for story,
-disappearing and profile pictures, content warnings, replay View once
-photos, loop videos, start videos with sound, speed up videos.
-
-**Meta AI** — in search, the chat list button, and the media menu.
-
-**Tab bar** — Liquid Glass, and each of the four tabs.
-
-**FLEX explorer** inspects what is on screen. **Pause PrimeSenger** turns
-everything off without changing any switch.
-
-## Compatibility
-
-Debug builds add a Compatibility page. Turn on Record activity after a
-Messenger update and use the app: the report marks every option Working,
-Not seen, Off or Broken, and names any class the update removed.
+The .deb also works injected into an IPA (pyzule, cyan): its sideload fixes turn on only in a
+re-signed app.
 
 ## Build
 
-Run the **Build PrimeSenger** workflow from the Actions tab with the URL of a
-decrypted Messenger IPA. **Debug** publishes a draft release named `debug`,
-replaced at each build. **Release** publishes a draft `v<version>` from the
-default branch, with its notes taken from `CHANGELOG.md`. The version comes
-from `control`.
+Actions → **Build** → Run workflow:
 
-## Sideload requirements
+- **Debug**: IPA with the Compatibility tools, in the `debug` draft release
+- **Release** (default branch only): IPA and debs, in a draft release to publish
 
-Both files under `Resources/` are required: `Messenger.entitlements` keeps
-Meta's entitlements through repackaging, and `SideloadKeychainFix.dylib`
-lets keychain queries scoped to the original team identifier resolve.
-
-## License
-
-Proprietary. All rights reserved. See LICENSE.
+The version is `Version:` in `control`. Release notes are its section in `CHANGELOG.md`.
