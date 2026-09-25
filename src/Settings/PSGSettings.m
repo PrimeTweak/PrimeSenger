@@ -139,17 +139,13 @@ static UIImage *PSGGlyph(NSString *name) {
         [UIImageSymbolConfiguration configurationWithPointSize:kInfoGlyphSize
                                                         weight:UIImageSymbolWeightRegular];
     UIImage *glyph = [UIImage systemImageNamed:@"info.circle" withConfiguration:configuration];
-    if (glyph != nil) {
-        [_info setImage:glyph forState:UIControlStateNormal];
-    } else {
-        [_info setTitle:@"i" forState:UIControlStateNormal];
-    }
+    [_info setImage:glyph forState:UIControlStateNormal];
     _info.hidden = YES;
     [self addSubview:_info];
     return self;
 }
 
-// The info button sits at the trailing edge, centred on the title.
+// The info button sits at the trailing edge, centered on the title.
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGFloat height = ceil(self.label.font.lineHeight);
@@ -211,11 +207,7 @@ UIBarButtonItem *PSGCloseItem(id target, SEL action) {
     button.accessibilityLabel = @"Done";
     [button addTarget:target action:action forControlEvents:UIControlEventTouchUpInside];
     UIImage *glyph = [UIImage systemImageNamed:@"checkmark" withConfiguration:check];
-    if (glyph != nil) {
-        [button setImage:glyph forState:UIControlStateNormal];
-    } else {
-        [button setTitle:@"Done" forState:UIControlStateNormal];
-    }
+    [button setImage:glyph forState:UIControlStateNormal];
     return [[UIBarButtonItem alloc] initWithCustomView:button];
 }
 
@@ -413,55 +405,49 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 
     self.help = @[
         @[@[@"Read receipts",
-            @"Off, nobody sees when you read. The pill sets the exception: Never, Manual to "
-             "send one with the eye in a chat, or On reply to send one when you reply or react.",
+            @"The mark that tells others you've read their messages. Manual: tap the eye in a chat to send one.",
             @"eye.fill"],
-          @[@"Typing indicator", @"Off, the three dots are never sent. You still see theirs.",
+          @[@"Typing indicator", @"The dots others see while you type.",
             @"ellipsis.bubble.fill"],
           @[@"Screenshot alerts",
-            @"Off, nobody is told when you screenshot or record a disappearing photo, a photo "
-             "opened full screen, or an encrypted chat.",
+            @"The alert others may get when you take a screenshot.",
             @"camera.fill"]],
         @[@[@"Quick reaction",
-            @"Off, the emoji next to the message field becomes a send button, so a stray tap "
-             "never sends a reaction.",
+            @"The one-tap emoji next to the message field.",
             @"face.smiling.fill"],
           @[@"Upload in HD",
-            @"Applies to photos picked in Messenger's own picker, not the iOS one.",
+            @"Sends photos in full quality from Messenger's own picker.",
             @"arrow.up.circle.fill"],
           @[@"View once toggle",
-            @"Off, the View once option can't be switched on when you send a photo.",
+            @"The option to send a photo that opens only once.",
             @"1.circle"],
           @[@"Mute bell",
-            @"Adds a bell to each chat's header. It silences that chat on this phone only; "
-             "nobody is told.",
+            @"A bell in each chat that mutes it for this phone only.",
             @"bell.slash.fill"]],
         @[@[@"Friend suggestions", @"The suggested people in the Notifications tab.",
             @"person.badge.plus"]],
         @[],
         @[@[@"Unlock media actions",
-            @"Turns back on what Messenger greys out on photos and videos: save, share, forward, "
-             "copy and more.",
+            @"Lets you save, share and copy media that Messenger locks.",
             @"lock.open.fill"],
           @[@"Save button",
-            @"Adds a save button to story photos, disappearing photos and profile pictures.",
+            @"A save button for stories, disappearing photos and profile pictures.",
             @"square.and.arrow.down.fill"],
-          @[@"Content warnings", @"Off, photos hidden behind a warning show directly.",
+          @[@"Content warnings", @"The warning Messenger shows over sensitive photos.",
             @"exclamationmark.triangle.fill"],
           @[@"Replay view once",
-            @"View once photos can be opened again instead of vanishing after one look.",
+            @"Lets you open View once photos again.",
             @"arrow.counterclockwise.circle.fill"]],
         @[],
         @[@[@"Liquid Glass", @"Uses the iOS glass tab bar instead of Messenger's own.",
             @"drop.fill"],
-          @[@"Tabs", @"A tab you hide or show settles after Messenger restarts.",
+          @[@"Tabs", @"Hiding or showing a tab takes effect after a restart.",
             @"line.3.horizontal"]],
         @[@[@"Floating button",
-            @"The bolt over Messenger: tap it for PrimeSenger settings, drag it to move it. "
-             "It appears on its own when the Menu tab is hidden.",
+            @"A bolt over Messenger that opens these settings. It shows by itself when the Menu tab is hidden.",
             @"bolt.fill"],
           @[@"FLEX explorer",
-            @"A developer tool that inspects what is on screen. Leave it off in daily use.",
+            @"A developer tool that inspects the screen.",
             @"scope"]],
     ];
     self.titles = titles;

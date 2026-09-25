@@ -20,10 +20,6 @@ static const char kPSGCarrierKey;
 @implementation PSGWeakBox
 @end
 
-// The picture last shown by a screen this file put a button on. Held weakly
-// so a dismissed screen leaves nothing behind.
-static __weak UIView *gLastCarrier = nil;
-
 #pragma mark - Finding the picture
 
 // Any view answering -image with a UIImage, largest first, so the picture
@@ -188,7 +184,6 @@ static Class PSGProfileViewerClass(void) {
         return;
     }
 
-    gLastCarrier = carrier;
     PSGAddSaveButton(root, carrier, @"save profile");
 }
 
@@ -239,7 +234,6 @@ static Class PSGProfileViewerClass(void) {
         return;
     }
 
-    gLastCarrier = carrier;
     PSGAddSaveButton(root, carrier, @"save photo");
 }
 

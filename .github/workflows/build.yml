@@ -1,4 +1,4 @@
-name: Build PrimeSenger
+name: Build
 run-name: ${{ inputs.build }} · ${{ github.ref_name }}
 
 on:
@@ -12,74 +12,52 @@ on:
           - Release
         default: Debug
       ipa_url:
-        description: "URL to a decrypted Messenger IPA"
-        required: true
+        description: "Decrypted Messenger IPA link"
         type: string
+        required: true
       liquid_glass:
         description: "Opt the app into Liquid Glass (system controls only)"
-        default: false
-        required: false
         type: boolean
+        default: false
+
+permissions:
+  contents: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # macOS carries Xcode's iOS 26 SDK, which fleXD needs; the Makefile links it into Theos.
   build:
-    name: Build
     runs-on: macos-latest
-    permissions:
-      contents: write
     env:
       GH_TOKEN: ${{ github.token }}
+      PRIME_DEBUG: ${{ inputs.build == 'Release' && '0' || '1' }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Hide sensitive inputs
         uses: levibostian/action-hide-sensitive-inputs@v1
 
-      # The installer ends by fetching SDKs from api.github.com unauthenticated;
-      # after the Homebrew step that trips the rate limit and the script exits
-      # non-zero. The Theos clone itself has already succeeded by then, and the
-      # next step installs the SDK over an authenticated download, so this
-      # tolerates that specific failure and verifies the clone instead.
-      - name: Install Theos
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/theos/theos/master/bin/install-theos -o /tmp/install-theos
-          bash /tmp/install-theos || echo "installer exited non-zero (SDK fetch); verifying clone"
-          if [ ! -f "$HOME/theos/makefiles/common.mk" ]; then
-            echo "::error::Theos clone incomplete"; exit 1
-          fi
-          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
-          echo "Theos clone OK"
-
-      - name: Ensure iOS 16.5 SDK
-        run: |
-          if [ -d "$THEOS/sdks/iPhoneOS16.5.sdk" ]; then
-            echo "SDK already present"
-          else
-            curl -fsSL -H "Authorization: token ${{ github.token }}" \
-              -o /tmp/sdks.tar.gz \
-              https://codeload.github.com/theos/sdks/tar.gz/refs/heads/master
-            mkdir -p /tmp/sdks
-            tar -xzf /tmp/sdks.tar.gz -C /tmp/sdks --strip-components=1
-            mkdir -p "$THEOS/sdks"
-            mv /tmp/sdks/iPhoneOS16.5.sdk "$THEOS/sdks/"
-          fi
-          ls -1 "$THEOS/sdks"
-
-      # Read from control so the artefact names cannot drift from the tweak.
       - name: Read version
         run: |
-          VERSION=$(grep '^Version:' control | awk '{print $2}')
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "building PrimeSenger $VERSION"
+          version=$(grep '^Version:' control | cut -d' ' -f2)
+          if ! echo "$version" | grep -Eq '^[0-9]+(\.[0-9]+)*$'; then
+            echo "::error::No valid Version line in control."
+            exit 1
+          fi
+          ios=$(sed -nE 's/^TARGET.*:([0-9]+(\.[0-9]+)*)[[:space:]]*$/\1/p' Makefile)
+          if [ -z "$ios" ]; then
+            echo "::error::No deployment target at the end of the Makefile TARGET line."
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "IOS_MIN=$ios" >> "$GITHUB_ENV"
 
-      # A release is built from the default branch only, never twice for the
-      # same version, and only once CHANGELOG.md has a section for it.
+      # A release is built from the default branch only, never twice for the same version,
+      # and only once CHANGELOG.md has a section for it.
       - name: Check release
         if: ${{ inputs.build == 'Release' }}
         run: |
@@ -99,22 +77,59 @@ jobs:
             exit 1
           fi
 
+      - name: Download IPA
+        run: |
+          curl -fsSL -o App.ipa "${{ inputs.ipa_url }}"
+          zip -T App.ipa
+
+      - name: Read Messenger version
+        run: |
+          plist=$(unzip -Z1 App.ipa | grep -E '^Payload/[^/]+\.app/Info\.plist$' | head -1)
+          unzip -p App.ipa "$plist" > app-info.plist
+          echo "APP_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' app-info.plist)" >> "$GITHUB_ENV"
+
+      # The installer ends by fetching SDKs unauthenticated, which can hit the rate limit after
+      # the clone has succeeded; that failure is tolerated and the clone is checked instead.
+      - name: Install Theos
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/theos/theos/master/bin/install-theos -o /tmp/install-theos
+          bash /tmp/install-theos || echo "installer exited non-zero (SDK fetch); verifying clone"
+          if [ ! -f "$HOME/theos/makefiles/common.mk" ]; then
+            echo "::error::Theos clone incomplete"; exit 1
+          fi
+          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
+
+      - name: Ensure iOS 16.5 SDK
+        run: |
+          if [ -d "$THEOS/sdks/iPhoneOS16.5.sdk" ]; then
+            echo "SDK already present"
+          else
+            curl -fsSL -H "Authorization: token ${{ github.token }}" \
+              -o /tmp/sdks.tar.gz \
+              https://codeload.github.com/theos/sdks/tar.gz/refs/heads/master
+            mkdir -p /tmp/sdks
+            tar -xzf /tmp/sdks.tar.gz -C /tmp/sdks --strip-components=1
+            mkdir -p "$THEOS/sdks"
+            mv /tmp/sdks/iPhoneOS16.5.sdk "$THEOS/sdks/"
+          fi
+          ls -1 "$THEOS/sdks"
+
       - name: Build dylib
         run: |
           make clean || true
-          make FINALPACKAGE=1 PRIMESENGER_DEBUG=${{ inputs.build == 'Release' && '0' || '1' }}
-          mkdir -p out
-          DYLIB=$(find .theos -name 'PrimeSenger.dylib' | head -1)
-          if [ -z "$DYLIB" ]; then echo "::error::dylib not produced"; exit 1; fi
-          cp "$DYLIB" out/PrimeSenger.dylib
-          lipo -info out/PrimeSenger.dylib
-          otool -L out/PrimeSenger.dylib || true
+          make FINALPACKAGE=1 PRIME_DEBUG=$PRIME_DEBUG
+          dylib=$(find .theos -name 'PrimeSenger.dylib' | head -1)
+          if [ -z "$dylib" ]; then echo "::error::dylib not produced"; exit 1; fi
+          mkdir -p dylib
+          cp "$dylib" dylib/PrimeSenger.dylib
+          lipo -info dylib/PrimeSenger.dylib
 
-      - name: Upload dylib
-        uses: actions/upload-artifact@v4
-        with:
-          name: PrimeSenger-${{ env.VERSION }}-dylib
-          path: out/PrimeSenger.dylib
+      - name: Build debs
+        if: ${{ inputs.build == 'Release' }}
+        run: |
+          make clean package FINALPACKAGE=1 PRIME_DEBUG=$PRIME_DEBUG THEOS_PACKAGE_SCHEME=rootless
+          make clean package FINALPACKAGE=1 PRIME_DEBUG=$PRIME_DEBUG
+          ls -l packages
 
       - name: Install cyan
         run: |
@@ -123,55 +138,58 @@ jobs:
           /tmp/cyanenv/bin/python -m pip install \
             https://github.com/asdfzxcvbn/pyzule-rw/archive/main.zip
 
-      - name: Download IPA
-        run: curl -fsSL "${{ inputs.ipa_url }}" -o messenger.ipa
-
-      - name: Read Messenger version
-        run: |
-          PLIST=$(unzip -Z1 messenger.ipa | grep -E '^Payload/[^/]+\.app/Info\.plist$' | head -1)
-          unzip -p messenger.ipa "$PLIST" > app-info.plist
-          APPVER=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' app-info.plist)
-          echo "APPVER=$APPVER" >> "$GITHUB_ENV"
-          echo "Messenger $APPVER"
-
-      # The input IPA keeps Meta's entitlements in its own signature, so
-      # nothing is re-signed; only the two dylibs are added.
+      # The input IPA keeps its own signature, so nothing is re-signed; only dylibs are added.
       - name: Inject
         run: |
-          /tmp/cyanenv/bin/cyan -i messenger.ipa -o out/PrimeSenger.ipa \
-                                -f Resources/SideloadKeychainFix.dylib out/PrimeSenger.dylib \
-                                -x Resources/Messenger.entitlements \
-                                -u -w -e
+          mkdir -p out
+          /tmp/cyanenv/bin/cyan -i App.ipa -o out/PrimeSenger.ipa -f packaging/SideloadKeychainFix.dylib dylib/PrimeSenger.dylib -x packaging/Messenger.entitlements -u -w -e
 
-      # Done here rather than through cyan's plist flag, whose merge or
-      # replace behaviour is not documented clearly enough to risk the whole
-      # Info.plist on. The script edits one key and leaves the rest alone.
+      # UIKit reads the key once at launch, so it is set in the bundle; the script edits
+      # that one key and leaves the rest of Info.plist alone.
       - name: Opt into Liquid Glass
         if: ${{ inputs.liquid_glass }}
         run: |
           rm -rf glass && mkdir glass
           (cd glass && unzip -qq ../out/PrimeSenger.ipa)
-          APP=$(find glass/Payload -maxdepth 1 -name '*.app' | head -1)
-          if [ -z "$APP" ]; then echo "::error::no app bundle found"; exit 1; fi
-          python3 Resources/set-liquid-glass.py "$APP/Info.plist"
+          app=$(find glass/Payload -maxdepth 1 -name '*.app' | head -1)
+          if [ -z "$app" ]; then echo "::error::No app bundle found."; exit 1; fi
+          python3 packaging/set-liquid-glass.py "$app/Info.plist"
           rm -f out/PrimeSenger.ipa
           (cd glass && zip -qry ../out/PrimeSenger.ipa Payload)
-          echo "repacked $(ls -la out/PrimeSenger.ipa | awk '{print $5}') bytes"
 
-      - name: Name the IPA
+      - name: Name files
         run: |
-          SUFFIX=""
-          if [ "${{ inputs.liquid_glass }}" = "true" ]; then SUFFIX="-glass"; fi
-          FINAL="PrimeSenger-${VERSION}-Messenger${APPVER}-sideloaded${SUFFIX}.ipa"
-          mv out/PrimeSenger.ipa "out/$FINAL"
-          echo "FINAL=$FINAL" >> "$GITHUB_ENV"
-          echo "packaged $FINAL"
+          suffix=""
+          if [ "${{ inputs.liquid_glass }}" = "true" ]; then suffix="$suffix-glass"; fi
+          if [ "${{ inputs.build }}" = "Debug" ]; then suffix="$suffix-debug"; fi
+          ipa="out/PrimeSenger-$VERSION-Messenger-$APP_VERSION$suffix.ipa"
+          mv out/PrimeSenger.ipa "$ipa"
+          echo "IPA=$ipa" >> "$GITHUB_ENV"
+          if [ "${{ inputs.build }}" = "Release" ]; then
+            mv packages/*_iphoneos-arm64.deb "out/PrimeSenger-$VERSION-rootless.deb"
+            mv packages/*_iphoneos-arm.deb "out/PrimeSenger-$VERSION-rootful.deb"
+          fi
+          ls -l out
 
       - name: Check IPA
         run: |
           for lib in PrimeSenger.dylib SideloadKeychainFix.dylib; do
-            if ! unzip -Z1 "out/$FINAL" | grep -q "/$lib\$"; then
+            if ! unzip -Z1 "$IPA" | grep -q "/$lib\$"; then
               echo "::error::$lib is missing from the IPA."
+              exit 1
+            fi
+          done
+
+      - name: Check debs
+        if: ${{ inputs.build == 'Release' }}
+        run: |
+          for deb in out/*.deb; do
+            rm -rf debx && mkdir debx
+            (cd debx && ar -x "../$deb")
+            data=$(ls debx/data.tar.* | head -1)
+            tar -xOf "$data" '*PrimeSenger.dylib' > deb-dylib
+            if [ ! -s deb-dylib ]; then
+              echo "::error::PrimeSenger.dylib is missing from $deb."
               exit 1
             fi
           done
@@ -183,8 +201,8 @@ jobs:
                         --jq '.[] | select(.draft and .tag_name == "debug") | .id'); do
             gh api -X DELETE "repos/${{ github.repository }}/releases/$id"
           done
-          gh release create debug "out/$FINAL" --draft --target "${{ github.sha }}" \
-            --title "PrimeSenger $VERSION · debug" --notes ""
+          gh release create debug "$IPA" --draft --target "${{ github.sha }}" \
+            --title "PrimeSenger $VERSION · debug" --notes "For Messenger $APP_VERSION · iOS $IOS_MIN or later"
 
       - name: Publish release draft
         if: ${{ inputs.build == 'Release' }}
@@ -194,11 +212,11 @@ jobs:
             gh api -X DELETE "repos/${{ github.repository }}/releases/$id"
           done
           {
-            echo "For Messenger $APPVER · iOS 15.1 or later"
+            echo "For Messenger $APP_VERSION · iOS $IOS_MIN or later"
             echo
             echo "## What's new"
             echo
             cat notes.md
           } > body.md
-          gh release create "v$VERSION" "out/$FINAL" --draft --target "${{ github.sha }}" \
+          gh release create "v$VERSION" out/* --draft --target "${{ github.sha }}" \
             --title "PrimeSenger $VERSION" --notes-file body.md

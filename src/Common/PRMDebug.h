@@ -12,14 +12,11 @@
 // Appends one line to the rolling log. Cheap when debug is switched off.
 + (void)log:(NSString *)format, ... NS_FORMAT_FUNCTION(1, 2);
 
-// Records that a hook body ran. Counted regardless of the logging switch.
+// Records that a hook body ran, while Record activity is on.
 + (void)noteHook:(NSString *)name;
 
-// Records that a hook changed behaviour rather than merely observing.
+// Records that a hook changed behavior rather than merely observing.
 + (void)noteAction:(NSString *)name;
-
-// Logs the class of every element of a collection.
-+ (void)dumpCollection:(id)collection label:(NSString *)label;
 
 // Records that a screen appeared, and captures its view tree the first
 // time that screen class is seen.
@@ -34,18 +31,14 @@
 + (NSString *)logText;
 + (void)resetCounts;
 
-
-
-// Re-places the floating button after the keyboard has moved.
+// Hides the floating buttons while the keyboard is up.
 + (void)keyboardFrameChanged:(NSNotification *)note;
 
 // Glides the floating button back to its slot after a manual move.
 + (void)returnButtonToSlot;
 
-
 // Places or removes the floating button according to the current switches.
 + (void)installButton;
-
 
 @end
 

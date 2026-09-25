@@ -12,7 +12,7 @@
 @interface PSGCompatibilityReportViewController : UITableViewController
 @end
 
-// "Compatible", "2 broken" or "Not recording", and its colour.
+// "Compatible", "2 broken" or "Not recording", and its color.
 FOUNDATION_EXPORT NSString *PSGCompatStatusText(void);
 FOUNDATION_EXPORT UIColor *PSGCompatStatusColor(void);
 

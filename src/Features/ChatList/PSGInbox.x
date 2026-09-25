@@ -35,9 +35,9 @@
     return %orig;
 }
 
-// Returns the class name of the controller a unit row owns, which is what
-// distinguishes the search bar from the stories tray from the folder
-// filters. MSGInboxRowUnit exposes -controller; nothing else identifies it.
+// Returns the class name of the controller a unit row owns, which tells the
+// search bar, the stories tray and the folder filters apart. Rows are
+// recognized by answering -controller.
 static NSString *PSGUnitControllerName(id row) {
     if (![row respondsToSelector:@selector(controller)]) return nil;
     id controller = ((id (*)(id, SEL))objc_msgSend)(row, @selector(controller));

@@ -101,8 +101,8 @@ static void PSGDressEmojiAsSend(UIView *view) {
     }
     if (emoji == nil) return;
 
-    // Written only when the line changes: this runs on every layout pass of
-    // the action view, and formatting a string each time was measurable.
+    // Written only when the line changes, since this runs on every layout
+    // pass of the action view.
     static NSString *last = nil;
     NSString *line = nil;
 
@@ -112,9 +112,8 @@ static void PSGDressEmojiAsSend(UIView *view) {
         if (!emoji.isHidden) emoji.hidden = YES;
         line = @"unfocused, emoji hidden";
     } else {
-        // The send target first. Dressing the button before the target is
-        // known left a button that looked like Send and still sent the emoji
-        // whenever the host had not wired its own button yet.
+        // The send target is resolved first: a button dressed before its target
+        // is known would look like Send and still send the emoji.
         id target = send.allTargets.anyObject;
         NSArray<NSString *> *actions = target
             ? [send actionsForTarget:target forControlEvent:UIControlEventTouchUpInside]

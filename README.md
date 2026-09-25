@@ -4,7 +4,7 @@ A Messenger tweak for privacy, media and a cleaner interface.
 
 ## Requirements
 
-Messenger 575.0.0 on iOS 15.1 or later, sideloaded.
+Messenger 579.0.0 on iOS 15.1 or later, sideloaded.
 
 ## Features
 
@@ -24,7 +24,7 @@ phone only.
 
 **Stories** — reply bar, start stories with sound.
 
-**Media** — unlock greyed-out media actions, a save button for story,
+**Media** — unlock grayed-out media actions, a save button for story,
 disappearing and profile pictures, content warnings, replay View once
 photos, loop videos, start videos with sound, speed up videos.
 
@@ -43,15 +43,17 @@ Not seen, Off or Broken, and names any class the update removed.
 
 ## Build
 
-Run the **Build PrimeSenger** workflow from the Actions tab with the URL of a
-decrypted Messenger IPA. **Debug** publishes a draft release named `debug`,
-replaced at each build. **Release** publishes a draft `v<version>` from the
-default branch, with its notes taken from `CHANGELOG.md`. The version comes
-from `control`.
+Actions → **Build** → Run workflow with the link to a decrypted Messenger IPA.
+**Liquid Glass** builds the glass variant.
+
+- **Debug**: IPA with the Compatibility tools, in the `debug` draft release
+- **Release** (default branch only): IPA and debs, in a draft release to publish
+
+The version is `Version:` in `control`. Release notes are its section in `CHANGELOG.md`.
 
 ## Sideload requirements
 
-Both files under `Resources/` are required: `Messenger.entitlements` keeps
+Both files under `packaging/` are required: `Messenger.entitlements` keeps
 Meta's entitlements through repackaging, and `SideloadKeychainFix.dylib`
 lets keychain queries scoped to the original team identifier resolve.
 

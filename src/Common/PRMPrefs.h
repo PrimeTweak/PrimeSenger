@@ -1,4 +1,4 @@
-// Preference storage shared across the Prime line. Flags default to off.
+// Preference storage for PrimeSenger. Flags default to off.
 
 #import <Foundation/Foundation.h>
 
@@ -40,9 +40,6 @@ extern NSString *const PRMKeyFloatingButton;
 extern NSString *const PRMKeyNoAutoKeyboard;
 
 @interface PRMPrefs : NSObject
-
-// Every key this tweak stores, in declaration order.
-+ (NSArray<NSString *> *)allKeys;
 
 + (BOOL)isEnabled:(NSString *)key;
 + (void)setEnabled:(BOOL)enabled forKey:(NSString *)key;

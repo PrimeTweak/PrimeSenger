@@ -127,7 +127,7 @@ static NSArray<NSDictionary *> *PSGOptions(void) {
                   @"video canSave", @"video canShare", @"video canForward", @"video canCopy",
                   @"video canEdit", @"video canReply", @"video canGetInfo", @"video canLiveText",
                   @"video canAddToStory", @"video canAddToAlbum", @"video canShareSheet"],
-                @"Opened %lu greyed-out actions", @"Open a photo and tap Share",
+                @"Opened %lu grayed-out actions", @"Open a photo and tap Share",
                 @[@[@"LSMediaViewController", @"canSaveMedia", @"m"]]),
             PSGOption(@"Media", @"Save button", PRMKeySaveButton,
                 @[@"save media", @"save photo", @"save profile"],
