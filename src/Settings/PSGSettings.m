@@ -310,12 +310,44 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
     [self.tableView reloadData];
 }
 
+// Under the last section: the "How it works" link, aligned with the section
+// titles, then the version.
 - (void)installFooter {
-    UILabel *footer = [[UILabel alloc] initWithFrame:CGRectMake(0.0, 0.0, 0.0, 72.0)];
-    footer.text = @"PrimeSenger " PRIMESENGER_VERSION;
-    footer.font = [UIFont systemFontOfSize:15.0 weight:UIFontWeightSemibold];
-    footer.textColor = [UIColor tertiaryLabelColor];
-    footer.textAlignment = NSTextAlignmentCenter;
+    UIButtonConfiguration *style = [UIButtonConfiguration plainButtonConfiguration];
+    style.image = [UIImage systemImageNamed:@"info.circle"
+                          withConfiguration:[UIImageSymbolConfiguration
+                                                configurationWithPointSize:15.0
+                                                                    weight:UIImageSymbolWeightRegular]];
+    style.imagePadding = 6.0;
+    style.contentInsets = NSDirectionalEdgeInsetsZero;
+    style.baseForegroundColor = [UIColor linkColor];
+    style.attributedTitle = [[NSAttributedString alloc]
+        initWithString:@"How it works"
+            attributes:@{NSFontAttributeName : [UIFont systemFontOfSize:15.0]}];
+    UIButton *link = [UIButton buttonWithConfiguration:style primaryAction:nil];
+    link.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeading;
+    [link addTarget:self action:@selector(showHowItWorks) forControlEvents:UIControlEventTouchUpInside];
+    link.translatesAutoresizingMaskIntoConstraints = NO;
+
+    UILabel *version = [[UILabel alloc] initWithFrame:CGRectZero];
+    version.text = @"PrimeSenger " PRIMESENGER_VERSION;
+    version.font = [UIFont systemFontOfSize:15.0 weight:UIFontWeightSemibold];
+    version.textColor = [UIColor tertiaryLabelColor];
+    version.textAlignment = NSTextAlignmentCenter;
+    version.translatesAutoresizingMaskIntoConstraints = NO;
+
+    UIView *footer = [[UIView alloc] initWithFrame:CGRectMake(0.0, 0.0, 0.0, 120.0)];
+    [footer addSubview:link];
+    [footer addSubview:version];
+    [NSLayoutConstraint activateConstraints:@[
+        [link.topAnchor constraintEqualToAnchor:footer.topAnchor constant:4.0],
+        [link.leadingAnchor constraintEqualToAnchor:footer.leadingAnchor constant:kHeaderLeading],
+        [link.heightAnchor constraintEqualToConstant:44.0],
+        [version.topAnchor constraintEqualToAnchor:link.bottomAnchor],
+        [version.leadingAnchor constraintEqualToAnchor:footer.leadingAnchor],
+        [version.trailingAnchor constraintEqualToAnchor:footer.trailingAnchor],
+        [version.heightAnchor constraintEqualToConstant:72.0],
+    ]];
     self.tableView.tableFooterView = footer;
 }
 
@@ -331,7 +363,7 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
     [tools addObject:[PSGSettingsRow link:@"Compatibility" symbol:@"checkmark.seal.fill"
                                    action:@selector(openCompatibility)]];
 #endif
-    [tools addObject:[PSGSettingsRow row:@"Floating button" symbol:@"bolt.fill"
+    [tools addObject:[PSGSettingsRow row:@"Floating button" symbol:@"sparkles"
                                      key:PRMKeyFloatingButton inverted:NO]];
     [tools addObject:[PSGSettingsRow row:@"FLEX explorer" symbol:@"scope"
                                      key:PRMKeyFlexEnabled inverted:NO]];
@@ -386,7 +418,7 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
              pill:PRMKeySpeed2 on:@"2x" off:@"1.5x"]],
         @[[PSGSettingsRow row:@"Meta AI in search" symbol:@"magnifyingglass"
                           key:PRMKeyHideMetaAI inverted:YES],
-          [PSGSettingsRow row:@"Meta AI button" symbol:@"sparkles"
+          [PSGSettingsRow row:@"Meta AI button" symbol:@"circle"
                           key:PRMKeyHideMetaAIButton inverted:YES],
           [PSGSettingsRow row:@"Meta AI in media menu" symbol:@"photo.fill"
                           key:PRMKeyHideMetaAIMedia inverted:YES]],
@@ -444,8 +476,9 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
           @[@"Tabs", @"Hiding or showing a tab takes effect after a restart.",
             @"line.3.horizontal"]],
         @[@[@"Floating button",
-            @"A bolt over Messenger that opens these settings. It shows by itself when the Menu tab is hidden.",
-            @"bolt.fill"],
+            @"A button over Messenger that opens these settings. "
+             "It shows by itself when the Menu tab is hidden.",
+            @"sparkles"],
           @[@"FLEX explorer",
             @"A developer tool that inspects the screen.",
             @"scope"]],
@@ -496,6 +529,21 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
     if (section < 0 || section >= (NSInteger)self.help.count) return;
     [PSGHelpSheet presentFrom:self title:self.titles[(NSUInteger)section]
                         items:self.help[(NSUInteger)section]];
+}
+
+// How the switches and pills read, for anyone who wonders.
+- (void)showHowItWorks {
+    [PSGHelpSheet presentFrom:self title:@"How it works" items:@[
+        @[@"Messenger features",
+          @"A switch named after something in Messenger shows it. Turn the switch off to hide it.",
+          @"eye.fill"],
+        @[@"PrimeSenger features",
+          @"A switch named after something PrimeSenger adds turns it on.",
+          @"sparkles"],
+        @[@"Pills",
+          @"A pill beside a switch sets its option, like the video speed or when a read receipt still goes out.",
+          @"slider.horizontal.3"],
+    ]];
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView
@@ -595,7 +643,7 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
 - (void)noteMenuTabHidden {
     UIAlertController *alert = [UIAlertController
         alertControllerWithTitle:@"Menu tab hidden"
-                         message:@"PrimeSenger settings now open from the floating bolt button. "
+                         message:@"PrimeSenger settings now open from the floating button. "
                                   "The tab disappears once Messenger restarts."
                   preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];

@@ -1,4 +1,4 @@
-// Opens PrimeSenger from a bolt in Messenger's settings bar, since that
+// Opens PrimeSenger from the sparkles in Messenger's settings bar, since that
 // screen is a split-view container with no table rows to add to.
 
 #import "PSGSettings.h"
@@ -16,9 +16,9 @@
     UIImageSymbolConfiguration *configuration =
         [UIImageSymbolConfiguration configurationWithPointSize:18.0
                                                         weight:UIImageSymbolWeightSemibold];
-    UIImage *bolt = [UIImage systemImageNamed:@"bolt.fill" withConfiguration:configuration];
+    UIImage *glyph = [UIImage systemImageNamed:@"sparkles" withConfiguration:configuration];
 
-    UIBarButtonItem *item = [[UIBarButtonItem alloc] initWithImage:bolt
+    UIBarButtonItem *item = [[UIBarButtonItem alloc] initWithImage:glyph
                                                              style:UIBarButtonItemStylePlain
                                                             target:self
                                                             action:@selector(psg_openSettings)];

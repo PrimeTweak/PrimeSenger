@@ -251,20 +251,20 @@ static NSMutableArray<NSString *> *gScreenOrder = nil;
 }
 
 // Shown on demand, and whenever the Menu tab is hidden: settings live under
-// that tab, so the bolt is then the only way in.
+// that tab, so the floating button is then the only way in.
 + (BOOL)floatingButtonWanted {
     if ([PRMPrefs isEnabled:PRMKeyFloatingButton]) return YES;
     return [PRMPrefs isEnabled:PRMKeyHideTabMenu];
 }
 
 + (void)installButton {
-    [self installBolt];
+    [self installFloatingButton];
 #if PRIMESENGER_DEBUG
     [self installScope];
 #endif
 }
 
-+ (void)installBolt {
++ (void)installFloatingButton {
     UIWindow *window = [self keyWindow];
     if (window == nil) return;
     if (![self floatingButtonWanted]) {
@@ -282,7 +282,7 @@ static NSMutableArray<NSString *> *gScreenOrder = nil;
     button.bounds = CGRectMake(0.0, 0.0, kFloatingSize, kFloatingSize);
 
     // Drawn like the app's own floating button: a plain light circle with a
-    // soft shadow, carrying the tweak's bolt rather than a label.
+    // soft shadow, carrying the tweak's sparkles rather than a label.
     button.backgroundColor = [UIColor systemBackgroundColor];
     button.layer.cornerRadius = kFloatingSize / 2.0;
     button.tintColor = [UIColor labelColor];
@@ -295,7 +295,7 @@ static NSMutableArray<NSString *> *gScreenOrder = nil;
         [UIImageSymbolConfiguration
             configurationWithPointSize:kFloatingSize * kFloatingGlyphRatio
                                 weight:UIImageSymbolWeightSemibold];
-    UIImage *glyph = [UIImage systemImageNamed:@"bolt.fill" withConfiguration:configuration];
+    UIImage *glyph = [UIImage systemImageNamed:@"sparkles" withConfiguration:configuration];
     [button setImage:glyph forState:UIControlStateNormal];
 
     button.accessibilityLabel = @"PrimeSenger";
@@ -412,7 +412,7 @@ static NSMutableArray<NSString *> *gScreenOrder = nil;
 
 
 #if PRIMESENGER_DEBUG
-// White on near-black, like PrimeFreeBird's, so it never reads as the bolt.
+// White on near-black, like PrimeFreeBird's, so it never reads as the settings button.
 + (void)installScope {
     UIWindow *window = [self keyWindow];
     if (window == nil) return;
@@ -449,14 +449,15 @@ static NSMutableArray<NSString *> *gScreenOrder = nil;
     [window bringSubviewToFront:gScope];
 }
 
-// Stacked above the bolt when the bolt is showing, in its slot otherwise.
+// Stacked above the settings button when it is showing, in its slot otherwise.
 + (void)positionScope {
     UIButton *scope = gScope;
     UIWindow *window = scope.window;
     if (window == nil) return;
-    BOOL bolt = gButton.superview == window;
-    CGRect anchor = bolt ? gButton.frame : [self slotInWindow:window];
-    scope.frame = CGRectMake(CGRectGetMinX(anchor), CGRectGetMinY(anchor) - (bolt ? kStackedExtra : 0.0),
+    BOOL stacked = gButton.superview == window;
+    CGRect anchor = stacked ? gButton.frame : [self slotInWindow:window];
+    CGFloat lift = stacked ? kStackedExtra : 0.0;
+    scope.frame = CGRectMake(CGRectGetMinX(anchor), CGRectGetMinY(anchor) - lift,
                              kFloatingSize, kFloatingSize);
     scope.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleTopMargin;
     scope.alpha = gKeyboardUp ? 0.0 : 1.0;

@@ -8,8 +8,8 @@ Messenger 579.0.0 on iOS 15.1 or later, sideloaded.
 
 ## Features
 
-Settings open from the bolt at the top of Messenger's settings, or from the
-floating bolt, which shows on its own when the Menu tab is hidden and anytime
+Settings open from the sparkles at the top of Messenger's settings, or from the
+floating button, which shows on its own when the Menu tab is hidden and anytime
 with the Floating button option. A switch named after a thing
 is on while that thing is visible; a switch named after an action does it.
 
