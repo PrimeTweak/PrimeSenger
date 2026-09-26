@@ -30,7 +30,8 @@ static const CGFloat kPillLabelGap   = 10.0;
 
 static const CGFloat kInfoSize       = 22.0;
 static const CGFloat kInfoGlyphSize  = 20.0;
-static const CGFloat kLinkFooterHeight = 44.0;
+static const CGFloat kLinkHeight     = 44.0;
+static const CGFloat kLinkCenterY    = 17.0;
 
 #pragma mark - Shared pieces
 
@@ -212,33 +213,49 @@ UIBarButtonItem *PSGCloseItem(id target, SEL action) {
     return [[UIBarButtonItem alloc] initWithCustomView:button];
 }
 
-// The "How it works" link under the last section, in the footer's gray, its
-// icon centered on the row icons.
-static UIView *PSGHowItWorksFooter(id target, SEL action) {
+// The "How it works" link under the last section: its icon and title sit in the
+// row icon and title columns, in the footer's gray.
+@interface PSGHowItWorksLink : UIControl
+- (instancetype)initWithTarget:(id)target action:(SEL)action;
+@end
+
+@implementation PSGHowItWorksLink
+
+- (instancetype)initWithTarget:(id)target action:(SEL)action {
+    self = [super initWithFrame:CGRectZero];
+    if (!self) return nil;
+    UIColor *gray = [UIColor tertiaryLabelColor];
     UIImageSymbolConfiguration *size =
         [UIImageSymbolConfiguration configurationWithPointSize:15.0 weight:UIImageSymbolWeightRegular];
-    UIImage *glyph = [UIImage systemImageNamed:@"info.circle" withConfiguration:size];
-    UIButtonConfiguration *style = [UIButtonConfiguration plainButtonConfiguration];
-    style.image = glyph;
-    style.imagePadding = 6.0;
-    style.contentInsets = NSDirectionalEdgeInsetsMake(8.0, 0.0, 16.0, 12.0);
-    style.baseForegroundColor = [UIColor tertiaryLabelColor];
-    style.attributedTitle = [[NSAttributedString alloc]
-        initWithString:@"How it works"
-            attributes:@{NSFontAttributeName : [UIFont systemFontOfSize:15.0]}];
-    UIButton *link = [UIButton buttonWithConfiguration:style primaryAction:nil];
-    [link addTarget:target action:action forControlEvents:UIControlEventTouchUpInside];
-    link.translatesAutoresizingMaskIntoConstraints = NO;
+    UIImageView *icon =
+        [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"info.circle" withConfiguration:size]];
+    icon.contentMode = UIViewContentModeCenter;
+    icon.tintColor = gray;
+    icon.frame = CGRectMake(kIconLeading, kLinkCenterY - kIconSize / 2.0, kIconSize, kIconSize);
+    [self addSubview:icon];
 
-    UIView *footer = [[UIView alloc] initWithFrame:CGRectZero];
-    [footer addSubview:link];
-    [NSLayoutConstraint activateConstraints:@[
-        [link.topAnchor constraintEqualToAnchor:footer.topAnchor],
-        [link.leadingAnchor constraintEqualToAnchor:footer.leadingAnchor
-                                           constant:kIconLeading + kIconSize / 2.0 - glyph.size.width / 2.0],
-    ]];
-    return footer;
+    UILabel *title = [[UILabel alloc] initWithFrame:CGRectZero];
+    title.text = @"How it works";
+    title.font = [UIFont systemFontOfSize:15.0];
+    title.textColor = gray;
+    CGSize fit = [title sizeThatFits:CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX)];
+    title.frame = CGRectMake(kTextLeading, round(kLinkCenterY - fit.height / 2.0),
+                             ceil(fit.width), ceil(fit.height));
+    [self addSubview:title];
+
+    self.isAccessibilityElement = YES;
+    self.accessibilityLabel = title.text;
+    self.accessibilityTraits = UIAccessibilityTraitButton;
+    [self addTarget:target action:action forControlEvents:UIControlEventTouchUpInside];
+    return self;
 }
+
+- (void)setHighlighted:(BOOL)highlighted {
+    [super setHighlighted:highlighted];
+    self.alpha = highlighted ? 0.5 : 1.0;
+}
+
+@end
 
 #pragma mark - Rows
 
@@ -518,12 +535,12 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForFooterInSection:(NSInteger)section {
-    return section == (NSInteger)self.sections.count - 1 ? kLinkFooterHeight : CGFLOAT_MIN;
+    return section == (NSInteger)self.sections.count - 1 ? kLinkHeight : CGFLOAT_MIN;
 }
 
 - (UIView *)tableView:(UITableView *)tableView viewForFooterInSection:(NSInteger)section {
     if (section != (NSInteger)self.sections.count - 1) return nil;
-    return PSGHowItWorksFooter(self, @selector(showHowItWorks));
+    return [[PSGHowItWorksLink alloc] initWithTarget:self action:@selector(showHowItWorks)];
 }
 
 - (void)infoTapped:(UIButton *)button {
@@ -536,9 +553,15 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 // How the switches and pills read, for anyone who wonders.
 - (void)showHowItWorks {
     [PSGHelpSheet presentFrom:self title:@"How it works" items:@[
-        @[@"Messenger features", @"On: as in Messenger. Off: removed by PrimeSenger.", @"eye.fill"],
-        @[@"PrimeSenger features", @"On: added by PrimeSenger. Off: as in Messenger.", @"sparkles"],
-        @[@"Pills", @"Choose the option of the switch beside it, like the video speed.",
+        @[@"Switches",
+          @"On means you have what the switch names; off means you don't. "
+          @"With Typing indicator off, others don't see you typing.",
+          @"switch.2"],
+        @[@"Info buttons", @"The info button next to a section title explains each switch in that section.",
+          @"info.circle"],
+        @[@"Pills",
+          @"Some switches have a small button next to them. Tap it to pick an option, "
+          @"like 1.5x or 2x for Speed up videos.",
           @"slider.horizontal.3"],
     ]];
 }
