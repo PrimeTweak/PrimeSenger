@@ -30,6 +30,7 @@ static const CGFloat kPillLabelGap   = 10.0;
 
 static const CGFloat kInfoSize       = 22.0;
 static const CGFloat kInfoGlyphSize  = 20.0;
+static const CGFloat kLinkFooterHeight = 44.0;
 
 #pragma mark - Shared pieces
 
@@ -211,6 +212,34 @@ UIBarButtonItem *PSGCloseItem(id target, SEL action) {
     return [[UIBarButtonItem alloc] initWithCustomView:button];
 }
 
+// The "How it works" link under the last section, in the footer's gray, its
+// icon centered on the row icons.
+static UIView *PSGHowItWorksFooter(id target, SEL action) {
+    UIImageSymbolConfiguration *size =
+        [UIImageSymbolConfiguration configurationWithPointSize:15.0 weight:UIImageSymbolWeightRegular];
+    UIImage *glyph = [UIImage systemImageNamed:@"info.circle" withConfiguration:size];
+    UIButtonConfiguration *style = [UIButtonConfiguration plainButtonConfiguration];
+    style.image = glyph;
+    style.imagePadding = 6.0;
+    style.contentInsets = NSDirectionalEdgeInsetsMake(8.0, 0.0, 16.0, 12.0);
+    style.baseForegroundColor = [UIColor tertiaryLabelColor];
+    style.attributedTitle = [[NSAttributedString alloc]
+        initWithString:@"How it works"
+            attributes:@{NSFontAttributeName : [UIFont systemFontOfSize:15.0]}];
+    UIButton *link = [UIButton buttonWithConfiguration:style primaryAction:nil];
+    [link addTarget:target action:action forControlEvents:UIControlEventTouchUpInside];
+    link.translatesAutoresizingMaskIntoConstraints = NO;
+
+    UIView *footer = [[UIView alloc] initWithFrame:CGRectZero];
+    [footer addSubview:link];
+    [NSLayoutConstraint activateConstraints:@[
+        [link.topAnchor constraintEqualToAnchor:footer.topAnchor],
+        [link.leadingAnchor constraintEqualToAnchor:footer.leadingAnchor
+                                           constant:kIconLeading + kIconSize / 2.0 - glyph.size.width / 2.0],
+    ]];
+    return footer;
+}
+
 #pragma mark - Rows
 
 typedef NS_ENUM(NSInteger, PSGRowKind) {
@@ -310,44 +339,12 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
     [self.tableView reloadData];
 }
 
-// Under the last section: the "How it works" link, aligned with the section
-// titles, then the version.
 - (void)installFooter {
-    UIButtonConfiguration *style = [UIButtonConfiguration plainButtonConfiguration];
-    style.image = [UIImage systemImageNamed:@"info.circle"
-                          withConfiguration:[UIImageSymbolConfiguration
-                                                configurationWithPointSize:15.0
-                                                                    weight:UIImageSymbolWeightRegular]];
-    style.imagePadding = 6.0;
-    style.contentInsets = NSDirectionalEdgeInsetsZero;
-    style.baseForegroundColor = [UIColor linkColor];
-    style.attributedTitle = [[NSAttributedString alloc]
-        initWithString:@"How it works"
-            attributes:@{NSFontAttributeName : [UIFont systemFontOfSize:15.0]}];
-    UIButton *link = [UIButton buttonWithConfiguration:style primaryAction:nil];
-    link.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeading;
-    [link addTarget:self action:@selector(showHowItWorks) forControlEvents:UIControlEventTouchUpInside];
-    link.translatesAutoresizingMaskIntoConstraints = NO;
-
-    UILabel *version = [[UILabel alloc] initWithFrame:CGRectZero];
-    version.text = @"PrimeSenger " PRIMESENGER_VERSION;
-    version.font = [UIFont systemFontOfSize:15.0 weight:UIFontWeightSemibold];
-    version.textColor = [UIColor tertiaryLabelColor];
-    version.textAlignment = NSTextAlignmentCenter;
-    version.translatesAutoresizingMaskIntoConstraints = NO;
-
-    UIView *footer = [[UIView alloc] initWithFrame:CGRectMake(0.0, 0.0, 0.0, 120.0)];
-    [footer addSubview:link];
-    [footer addSubview:version];
-    [NSLayoutConstraint activateConstraints:@[
-        [link.topAnchor constraintEqualToAnchor:footer.topAnchor constant:4.0],
-        [link.leadingAnchor constraintEqualToAnchor:footer.leadingAnchor constant:kHeaderLeading],
-        [link.heightAnchor constraintEqualToConstant:44.0],
-        [version.topAnchor constraintEqualToAnchor:link.bottomAnchor],
-        [version.leadingAnchor constraintEqualToAnchor:footer.leadingAnchor],
-        [version.trailingAnchor constraintEqualToAnchor:footer.trailingAnchor],
-        [version.heightAnchor constraintEqualToConstant:72.0],
-    ]];
+    UILabel *footer = [[UILabel alloc] initWithFrame:CGRectMake(0.0, 0.0, 0.0, 72.0)];
+    footer.text = @"PrimeSenger " PRIMESENGER_VERSION;
+    footer.font = [UIFont systemFontOfSize:15.0 weight:UIFontWeightSemibold];
+    footer.textColor = [UIColor tertiaryLabelColor];
+    footer.textAlignment = NSTextAlignmentCenter;
     self.tableView.tableFooterView = footer;
 }
 
@@ -521,7 +518,12 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForFooterInSection:(NSInteger)section {
-    return CGFLOAT_MIN;
+    return section == (NSInteger)self.sections.count - 1 ? kLinkFooterHeight : CGFLOAT_MIN;
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForFooterInSection:(NSInteger)section {
+    if (section != (NSInteger)self.sections.count - 1) return nil;
+    return PSGHowItWorksFooter(self, @selector(showHowItWorks));
 }
 
 - (void)infoTapped:(UIButton *)button {
@@ -534,14 +536,9 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 // How the switches and pills read, for anyone who wonders.
 - (void)showHowItWorks {
     [PSGHelpSheet presentFrom:self title:@"How it works" items:@[
-        @[@"Messenger features",
-          @"A switch named after something in Messenger shows it. Turn the switch off to hide it.",
-          @"eye.fill"],
-        @[@"PrimeSenger features",
-          @"A switch named after something PrimeSenger adds turns it on.",
-          @"sparkles"],
-        @[@"Pills",
-          @"A pill beside a switch sets its option, like the video speed or when a read receipt still goes out.",
+        @[@"Messenger features", @"On: as in Messenger. Off: removed by PrimeSenger.", @"eye.fill"],
+        @[@"PrimeSenger features", @"On: added by PrimeSenger. Off: as in Messenger.", @"sparkles"],
+        @[@"Pills", @"Choose the option of the switch beside it, like the video speed.",
           @"slider.horizontal.3"],
     ]];
 }

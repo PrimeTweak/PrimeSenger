@@ -43,7 +43,7 @@ Not seen, Off or Broken, and names any class the update removed.
 
 ## Build
 
-Actions → **Build** → Run workflow with the link to a decrypted Messenger IPA.
+Actions → **Build PrimeSenger** → Run workflow with the link to a decrypted Messenger IPA.
 **Liquid Glass** builds the glass variant.
 
 - **Debug**: IPA with the Compatibility tools, in the `debug` draft release
