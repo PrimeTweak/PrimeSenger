@@ -31,7 +31,6 @@ static const CGFloat kPillLabelGap   = 10.0;
 static const CGFloat kInfoSize       = 22.0;
 static const CGFloat kInfoGlyphSize  = 20.0;
 static const CGFloat kLinkHeight     = 44.0;
-static const CGFloat kLinkCenterY    = 17.0;
 
 #pragma mark - Shared pieces
 
@@ -213,8 +212,8 @@ UIBarButtonItem *PSGCloseItem(id target, SEL action) {
     return [[UIBarButtonItem alloc] initWithCustomView:button];
 }
 
-// The "How it works" link under the last section: its icon and title sit in the
-// row icon and title columns, in the footer's gray.
+// The "How it works" link under the last section, in the footer's gray: as high as
+// a section title, its icon and text in the row icon and title columns.
 @interface PSGHowItWorksLink : UIControl
 - (instancetype)initWithTarget:(id)target action:(SEL)action;
 @end
@@ -225,23 +224,24 @@ UIBarButtonItem *PSGCloseItem(id target, SEL action) {
     self = [super initWithFrame:CGRectZero];
     if (!self) return nil;
     UIColor *gray = [UIColor tertiaryLabelColor];
+    UILabel *title = [[UILabel alloc] initWithFrame:CGRectZero];
+    title.text = @"How it works";
+    title.font = [UIFont systemFontOfSize:kHeaderSize];
+    title.textColor = gray;
+    CGFloat height = ceil(title.font.lineHeight);
+    CGFloat top = kHeaderHeight - height - kHeaderBaseline;
+    CGSize fit = [title sizeThatFits:CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX)];
+    title.frame = CGRectMake(kTextLeading, top, ceil(fit.width), height);
+    [self addSubview:title];
+
     UIImageSymbolConfiguration *size =
-        [UIImageSymbolConfiguration configurationWithPointSize:15.0 weight:UIImageSymbolWeightRegular];
+        [UIImageSymbolConfiguration configurationWithPointSize:kHeaderSize weight:UIImageSymbolWeightRegular];
     UIImageView *icon =
         [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"info.circle" withConfiguration:size]];
     icon.contentMode = UIViewContentModeCenter;
     icon.tintColor = gray;
-    icon.frame = CGRectMake(kIconLeading, kLinkCenterY - kIconSize / 2.0, kIconSize, kIconSize);
+    icon.frame = CGRectMake(kIconLeading, top + (height - kIconSize) / 2.0, kIconSize, kIconSize);
     [self addSubview:icon];
-
-    UILabel *title = [[UILabel alloc] initWithFrame:CGRectZero];
-    title.text = @"How it works";
-    title.font = [UIFont systemFontOfSize:15.0];
-    title.textColor = gray;
-    CGSize fit = [title sizeThatFits:CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX)];
-    title.frame = CGRectMake(kTextLeading, round(kLinkCenterY - fit.height / 2.0),
-                             ceil(fit.width), ceil(fit.height));
-    [self addSubview:title];
 
     self.isAccessibilityElement = YES;
     self.accessibilityLabel = title.text;
