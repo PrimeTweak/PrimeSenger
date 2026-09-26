@@ -1,0 +1,9 @@
+Package: com.primetweak.primesenger
+Name: PrimeSenger
+Version: 1.0.0
+Architecture: iphoneos-arm
+Description: Adds privacy, media and interface options to Messenger.
+Maintainer: PrimeTweak
+Author: PrimeTweak
+Section: Tweaks
+Depends: mobilesubstrate (>= 0.9.5000)

@@ -1,0 +1,72 @@
+// FLEX, opened from its settings row, or by holding the floating button
+// while recording. Resolved at runtime, so a build without it still loads.
+
+#import "PRMPrefs.h"
+#import "PRMDebug.h"
+#import <objc/runtime.h>
+#import <objc/message.h>
+
+@implementation PRMDebug (PSGFlex)
+
+// Driven by the stored preference rather than the explorer's own state, so
+// a relaunch restores what was chosen.
++ (void)applyFlexState {
+    Class manager = NSClassFromString(@"FLEXManager");
+    if (manager == Nil) {
+        [PRMDebug setStatus:@"FLEXManager absent, the vendor clone is not in the dylib"
+                     forKey:@"flex"];
+        return;
+    }
+
+    id shared = ((id (*)(id, SEL))objc_msgSend)(manager, @selector(sharedManager));
+    if (shared == nil) {
+        [PRMDebug setStatus:@"sharedManager returned nil" forKey:@"flex"];
+        return;
+    }
+
+    BOOL wanted = [PRMPrefs isEnabled:PRMKeyFlexEnabled];
+
+    BOOL showing = NO;
+    if ([shared respondsToSelector:@selector(isHidden)]) {
+        showing = !((BOOL (*)(id, SEL))objc_msgSend)(shared, @selector(isHidden));
+    }
+    if (wanted == showing) {
+        [PRMDebug setStatus:[NSString stringWithFormat:@"already %@",
+                             wanted ? @"showing" : @"hidden"]
+                     forKey:@"flex"];
+        return;
+    }
+
+    if (!wanted) {
+        if ([shared respondsToSelector:@selector(hideExplorer)]) {
+            ((void (*)(id, SEL))objc_msgSend)(shared, @selector(hideExplorer));
+        }
+        [PRMDebug setStatus:@"hidden" forKey:@"flex"];
+        return;
+    }
+
+    // The explorer builds its own window, which needs a scene on iOS 15 and
+    // later. Without one it can be created without ever being attached.
+    UIWindowScene *scene = nil;
+    for (UIScene *candidate in UIApplication.sharedApplication.connectedScenes) {
+        if (candidate.activationState == UISceneActivationStateForegroundActive
+            && [candidate isKindOfClass:[UIWindowScene class]]) {
+            scene = (UIWindowScene *)candidate;
+            break;
+        }
+    }
+
+    if (scene != nil && [shared respondsToSelector:@selector(showExplorerFromScene:)]) {
+        ((void (*)(id, SEL, id))objc_msgSend)(shared,
+                                              @selector(showExplorerFromScene:), scene);
+        [PRMDebug setStatus:@"shown from scene" forKey:@"flex"];
+        return;
+    }
+
+    if ([shared respondsToSelector:@selector(showExplorer)]) {
+        ((void (*)(id, SEL))objc_msgSend)(shared, @selector(showExplorer));
+        [PRMDebug setStatus:@"shown" forKey:@"flex"];
+    }
+}
+
+@end
