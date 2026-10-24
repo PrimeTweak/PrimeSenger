@@ -40,12 +40,6 @@
 // Places or removes the floating button according to the current switches.
 + (void)installButton;
 
-#if PRIMESENGER_DEBUG
-// Dumps the frontmost window on demand (double tap on the scope): flagged
-// views with their ancestry, then a bounded tree for context.
-+ (void)captureLiveHierarchy;
-#endif
-
 @end
 
 // FLEX, resolved at runtime so a build without it still loads.
