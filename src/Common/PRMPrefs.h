@@ -30,6 +30,7 @@ extern NSString *const PRMKeyHideStoriesTray;
 extern NSString *const PRMKeyBlockScreenshotNotice;
 extern NSString *const PRMKeyHidePymkInNotifications;
 extern NSString *const PRMKeyHideTabChats;
+extern NSString *const PRMKeyHideTabMetaAI;
 extern NSString *const PRMKeyHideTabStories;
 extern NSString *const PRMKeyHideTabNotifications;
 extern NSString *const PRMKeyHideTabMenu;

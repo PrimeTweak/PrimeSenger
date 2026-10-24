@@ -42,13 +42,7 @@
 
 // Where the app decides whether a notification is shown. A chat muted with
 // the bell gets no presentation; anything unexpected passes through.
-%hook MSGThreadListViewController
-
-- (id)notificationPresentationOptionsWithThreadKey:(id)threadKey
-                                        recipientID:(id)recipientID
-                                 pushLogMessageType:(int)logType
-                                    pushPayloadType:(int)payloadType {
-    id original = %orig;
+static id PSGPresentationOptions(id original, id threadKey, int logType, int payloadType) {
     [PRMDebug noteHook:@"silence"];
 
     NSString *identifier = [PSGSilence identifierForThreadKey:threadKey];
@@ -72,6 +66,39 @@
         return @0;
     }
     return original;
+}
+
+// Messenger 584 decides this on three screens: the chat list, its legacy
+// variant, and an open conversation. Each gets the same decision.
+%hook _TtC20LightSpeedThreadList27MSGThreadListViewController
+
+- (id)notificationPresentationOptionsWithThreadKey:(id)threadKey
+                                        recipientID:(id)recipientID
+                                 pushLogMessageType:(int)logType
+                                    pushPayloadType:(int)payloadType {
+    return PSGPresentationOptions(%orig, threadKey, logType, payloadType);
+}
+
+%end
+
+%hook MSGThreadListViewControllerLegacy
+
+- (id)notificationPresentationOptionsWithThreadKey:(id)threadKey
+                                        recipientID:(id)recipientID
+                                 pushLogMessageType:(int)logType
+                                    pushPayloadType:(int)payloadType {
+    return PSGPresentationOptions(%orig, threadKey, logType, payloadType);
+}
+
+%end
+
+%hook MSGThreadViewController
+
+- (id)notificationPresentationOptionsWithThreadKey:(id)threadKey
+                                        recipientID:(id)recipientID
+                                 pushLogMessageType:(int)logType
+                                    pushPayloadType:(int)payloadType {
+    return PSGPresentationOptions(%orig, threadKey, logType, payloadType);
 }
 
 %end

@@ -440,6 +440,8 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
                           key:PRMKeyGlassTabBar inverted:NO],
           [PSGSettingsRow row:@"Chats" symbol:@"bubble.left.fill"
                           key:PRMKeyHideTabChats inverted:YES],
+          [PSGSettingsRow row:@"Meta AI" symbol:@"circle.circle.fill"
+                          key:PRMKeyHideTabMetaAI inverted:YES],
           [PSGSettingsRow row:@"Stories" symbol:@"play.rectangle.fill"
                           key:PRMKeyHideTabStories inverted:YES],
           [PSGSettingsRow row:@"Notifications" symbol:@"bell.badge.fill"
@@ -673,7 +675,7 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
 // Tab changes settle only after a relaunch, which is said once per launch.
 - (void)noteRestartIfTabRow:(PSGSettingsRow *)row {
     static BOOL told = NO;
-    NSArray *tabKeys = @[PRMKeyHideTabChats, PRMKeyHideTabStories,
+    NSArray *tabKeys = @[PRMKeyHideTabChats, PRMKeyHideTabMetaAI, PRMKeyHideTabStories,
                          PRMKeyHideTabNotifications, PRMKeyHideTabMenu];
     if (![tabKeys containsObject:row.key] || told) return;
     told = YES;

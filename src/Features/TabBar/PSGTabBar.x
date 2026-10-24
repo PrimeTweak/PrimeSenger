@@ -1,5 +1,6 @@
 // A system UITabBar placed inside the host's own bar carries the Liquid
-// Glass material; tabs are hidden by their accessibility label.
+// Glass material; tabs are hidden by their accessibility identifier, or by
+// their label where the host sets none.
 
 #import "PRMPrefs.h"
 #import "PRMDebug.h"
@@ -17,30 +18,54 @@ static const void *kPSGBarDelegate = &kPSGBarDelegate;
 
 #pragma mark - Tab names
 
-static NSString *PSGKeyForTabName(NSString *name) {
-    if (name.length == 0) return nil;
-    NSDictionary *rules = @{
+// The host's accessibility identifiers, stable across languages.
+static NSDictionary<NSString *, NSString *> *PSGKeysByIdentifier(void) {
+    return @{
+        @"tabbar-chats"                   : PRMKeyHideTabChats,
+        @"tabbar-meta-ai"                 : PRMKeyHideTabMetaAI,
+        @"tabbar-jewel-notification-menu" : PRMKeyHideTabNotifications,
+    };
+}
+
+// Option names, matched against the label when no identifier is known.
+static NSDictionary<NSString *, NSString *> *PSGKeysByLabel(void) {
+    return @{
         @"Chats"         : PRMKeyHideTabChats,
+        @"Meta AI"       : PRMKeyHideTabMetaAI,
         @"Stories"       : PRMKeyHideTabStories,
         @"Notifications" : PRMKeyHideTabNotifications,
         @"Menu"          : PRMKeyHideTabMenu,
     };
-    for (NSString *label in rules) {
-        if ([name compare:label options:NSCaseInsensitiveSearch] == NSOrderedSame) {
-            return rules[label];
+}
+
+static NSString *PSGKeyForTab(NSString *identifier, NSString *label) {
+    NSString *key = identifier.length ? PSGKeysByIdentifier()[identifier] : nil;
+    if (key != nil) return key;
+    if (label.length == 0) return nil;
+    NSDictionary *byLabel = PSGKeysByLabel();
+    for (NSString *candidate in byLabel) {
+        if ([label compare:candidate options:NSCaseInsensitiveSearch] == NSOrderedSame) {
+            return byLabel[candidate];
         }
     }
     return nil;
 }
 
-static BOOL PSGTabIsHidden(NSString *name) {
-    NSString *key = PSGKeyForTabName(name);
-    if (key == nil) return NO;
-    return [PRMPrefs isEnabled:key];
+// The key of a tab the user chose to hide, nil for any other tab.
+static NSString *PSGHiddenKeyForTab(NSString *identifier, NSString *label) {
+    NSString *key = PSGKeyForTab(identifier, label);
+    if (key == nil) return nil;
+    return [PRMPrefs isEnabled:key] ? key : nil;
 }
 
-// One counter per tab, so each tab option gets its own verdict in the report.
-static void PSGNoteTabHidden(NSString *name) {
+// One counter per tab option, named after the option so the report counts a
+// tab the same way whatever the device language.
+static void PSGNoteTabHidden(NSString *key) {
+    NSDictionary *byLabel = PSGKeysByLabel();
+    NSString *name = key;
+    for (NSString *label in byLabel) {
+        if ([byLabel[label] isEqualToString:key]) { name = label; break; }
+    }
     [PRMDebug noteAction:[@"tab hidden " stringByAppendingString:name]];
 }
 
@@ -100,12 +125,13 @@ static NSArray<UITabBarItem *> *PSGVisibleItems(UIView *host) {
     NSMutableArray<UITabBarItem *> *kept = [NSMutableArray array];
     for (id entry in items) {
         if (![entry isKindOfClass:[UITabBarItem class]]) continue;
-        NSString *name = PSGNameForItem(entry);
-        if (PSGTabIsHidden(name)) {
-            PSGNoteTabHidden(name);
+        UITabBarItem *item = entry;
+        NSString *key = PSGHiddenKeyForTab(item.accessibilityIdentifier, PSGNameForItem(item));
+        if (key != nil) {
+            PSGNoteTabHidden(key);
             continue;
         }
-        [kept addObject:entry];
+        [kept addObject:item];
     }
     return kept;
 }
@@ -191,12 +217,12 @@ static void PSGApplyNativeBar(UIView *host) {
             == NSNotFound) {
             continue;
         }
-        NSString *name = child.accessibilityLabel ?: @"";
+        NSString *key = PSGHiddenKeyForTab(child.accessibilityIdentifier, child.accessibilityLabel);
         BOOL ownedBefore = [objc_getAssociatedObject(child, kPSGHiddenByTweak) boolValue];
 
-        if (PSGTabIsHidden(name)) {
+        if (key != nil) {
             [mine addObject:child];
-            PSGNoteTabHidden(name);
+            PSGNoteTabHidden(key);
             continue;
         }
         if (ownedBefore) {

@@ -30,7 +30,7 @@ photos, loop videos, start videos with sound, speed up videos.
 
 **Meta AI** — in search, the chat list button, and the media menu.
 
-**Tab bar** — Liquid Glass, and each of the four tabs.
+**Tab bar** — Liquid Glass, and each of the five tabs.
 
 **Tools** — Backup & reset (export and import your settings, clear the cache,
 reset to defaults), and FLEX explorer, which inspects what is on screen.

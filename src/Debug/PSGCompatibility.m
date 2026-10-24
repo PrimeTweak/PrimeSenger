@@ -95,7 +95,7 @@ static NSArray<NSDictionary *> *PSGOptions(void) {
             PSGOption(@"Chats", @"Mute bell", PRMKeySilencedChats,
                 @[@"silence", @"silence bell"], @"Silenced %lu notifications",
                 @"Tap the bell in a chat, then get a message there",
-                @[@[@"MSGThreadListViewController",
+                @[@[@"_TtC20LightSpeedThreadList27MSGThreadListViewController",
                     @"notificationPresentationOptionsWithThreadKey:recipientID:"
                      "pushLogMessageType:pushPayloadType:", @"m"]]),
 
@@ -170,6 +170,8 @@ static NSArray<NSDictionary *> *PSGOptions(void) {
                 @"Relaunch Messenger", @[@[tabBar, @"", @"k"]]),
             PSGOption(@"Tab bar", @"Chats", PRMKeyHideTabChats,
                 @[@"tab hidden Chats"], @"Removed the tab", @"Relaunch Messenger", tabNeeds),
+            PSGOption(@"Tab bar", @"Meta AI", PRMKeyHideTabMetaAI,
+                @[@"tab hidden Meta AI"], @"Removed the tab", @"Relaunch Messenger", tabNeeds),
             PSGOption(@"Tab bar", @"Stories", PRMKeyHideTabStories,
                 @[@"tab hidden Stories"], @"Removed the tab", @"Relaunch Messenger", tabNeeds),
             PSGOption(@"Tab bar", @"Notifications", PRMKeyHideTabNotifications,

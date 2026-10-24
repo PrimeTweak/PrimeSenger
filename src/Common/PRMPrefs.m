@@ -29,6 +29,7 @@ NSString *const PRMKeyHideStoriesTray      = @"psg_hide_stories_tray";
 NSString *const PRMKeyBlockScreenshotNotice = @"psg_block_screenshot_notice";
 NSString *const PRMKeyHidePymkInNotifications = @"psg_hide_pymk_in_notifications";
 NSString *const PRMKeyHideTabChats         = @"psg_hide_tab_chats";
+NSString *const PRMKeyHideTabMetaAI        = @"psg_hide_tab_meta_ai";
 NSString *const PRMKeyHideTabStories       = @"psg_hide_tab_stories";
 NSString *const PRMKeyHideTabNotifications = @"psg_hide_tab_notifications";
 NSString *const PRMKeyHideTabMenu          = @"psg_hide_tab_menu";
