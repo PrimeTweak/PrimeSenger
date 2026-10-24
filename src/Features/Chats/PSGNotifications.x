@@ -76,7 +76,8 @@ static id PSGPresentationOptions(id original, id threadKey, int logType, int pay
                                         recipientID:(id)recipientID
                                  pushLogMessageType:(int)logType
                                     pushPayloadType:(int)payloadType {
-    return PSGPresentationOptions(%orig, threadKey, logType, payloadType);
+    id original = %orig;
+    return PSGPresentationOptions(original, threadKey, logType, payloadType);
 }
 
 %end
@@ -87,7 +88,8 @@ static id PSGPresentationOptions(id original, id threadKey, int logType, int pay
                                         recipientID:(id)recipientID
                                  pushLogMessageType:(int)logType
                                     pushPayloadType:(int)payloadType {
-    return PSGPresentationOptions(%orig, threadKey, logType, payloadType);
+    id original = %orig;
+    return PSGPresentationOptions(original, threadKey, logType, payloadType);
 }
 
 %end
@@ -98,7 +100,8 @@ static id PSGPresentationOptions(id original, id threadKey, int logType, int pay
                                         recipientID:(id)recipientID
                                  pushLogMessageType:(int)logType
                                     pushPayloadType:(int)payloadType {
-    return PSGPresentationOptions(%orig, threadKey, logType, payloadType);
+    id original = %orig;
+    return PSGPresentationOptions(original, threadKey, logType, payloadType);
 }
 
 %end
