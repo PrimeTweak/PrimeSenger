@@ -11,22 +11,40 @@
 
 #pragma mark - Permission gates
 
-- (BOOL)canSaveMedia {
+// These gates take the item and its mailbox, split by photo and video where
+// the host splits them; the counter labels match the compatibility rows.
+- (BOOL)canSavePhotoWithMailbox:(id)mailbox {
     BOOL original = %orig;
     return PSGUnlockGate(original, @"video canSave");
 }
 
-- (BOOL)canShareMedia {
+- (BOOL)canSaveVideoWithMailbox:(id)mailbox {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"video canSave");
+}
+
+- (BOOL)canShareMediaWithMailbox:(id)mailbox
+                     mediaConfig:(id)config
+ isMediaBlurredForPossibleNudity:(BOOL)blurred {
     BOOL original = %orig;
     return PSGUnlockGate(original, @"video canShare");
 }
 
-- (BOOL)canForwardMedia {
+- (BOOL)canForwardMediaItem:(id)item
+                    mailbox:(id)mailbox
+               attachmentId:(id)attachment
+                mailboxType:(NSInteger)type
+isMediaBlurredForPossibleNudity:(BOOL)blurred {
     BOOL original = %orig;
     return PSGUnlockGate(original, @"video canForward");
 }
 
-- (BOOL)canCopyMedia {
+- (BOOL)canCopyPhotoWithMailbox:(id)mailbox {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"video canCopy");
+}
+
+- (BOOL)canCopyVideoWithAuthDataContext:(id)context {
     BOOL original = %orig;
     return PSGUnlockGate(original, @"video canCopy");
 }

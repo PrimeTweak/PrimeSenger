@@ -26,22 +26,40 @@ BOOL PSGCensorGate(BOOL original, NSString *name) {
 
 %hook LSMediaViewController
 
-- (BOOL)canSaveMedia {
+// These gates take the item and its mailbox, split by photo and video where
+// the host splits them; the counter labels match the compatibility rows.
+- (BOOL)canSavePhotoWithMailbox:(id)mailbox {
     BOOL original = %orig;
     return PSGUnlockGate(original, @"canSaveMedia");
 }
 
-- (BOOL)canShareMedia {
+- (BOOL)canSaveVideoWithMailbox:(id)mailbox {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"canSaveMedia");
+}
+
+- (BOOL)canShareMediaWithMailbox:(id)mailbox
+                     mediaConfig:(id)config
+ isMediaBlurredForPossibleNudity:(BOOL)blurred {
     BOOL original = %orig;
     return PSGUnlockGate(original, @"canShareMedia");
 }
 
-- (BOOL)canForwardMedia {
+- (BOOL)canForwardMediaItem:(id)item
+                    mailbox:(id)mailbox
+               attachmentId:(id)attachment
+                mailboxType:(NSInteger)type
+isMediaBlurredForPossibleNudity:(BOOL)blurred {
     BOOL original = %orig;
     return PSGUnlockGate(original, @"canForwardMedia");
 }
 
-- (BOOL)canCopyMedia {
+- (BOOL)canCopyPhotoWithMailbox:(id)mailbox {
+    BOOL original = %orig;
+    return PSGUnlockGate(original, @"canCopyMedia");
+}
+
+- (BOOL)canCopyVideoWithAuthDataContext:(id)context {
     BOOL original = %orig;
     return PSGUnlockGate(original, @"canCopyMedia");
 }
@@ -87,7 +105,7 @@ BOOL PSGCensorGate(BOOL original, NSString *name) {
 }
 
 // View in chat, from the media viewer.
-- (BOOL)canViewMediaInThread {
+- (BOOL)_canViewMediaInThread {
     BOOL original = %orig;
     return PSGUnlockGate(original, @"canViewInThread");
 }
