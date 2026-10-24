@@ -41,8 +41,30 @@ static void PSGScanNotificationHosts(void) {
                  forKey:@"mute bell probe"];
 }
 
-// Each tab's name as the hide logic would read it, plus every bar subview, so
-// the new Meta AI tab's label and representation can both be matched.
+// Every ivar of the object whose name carries "identifier", with its value,
+// so a stable, language-independent key can be matched instead of the label.
+static NSString *PSGIdentifierIvars(id object) {
+    NSMutableArray<NSString *> *found = [NSMutableArray array];
+    for (Class cls = [object class]; cls != Nil && cls != [NSObject class];
+         cls = class_getSuperclass(cls)) {
+        unsigned int count = 0;
+        Ivar *ivars = class_copyIvarList(cls, &count);
+        if (ivars == NULL) continue;
+        for (unsigned int i = 0; i < count; i++) {
+            NSString *name = @(ivar_getName(ivars[i]) ?: "");
+            if ([name rangeOfString:@"dentifier"].location == NSNotFound) continue;
+            id value = nil;
+            @try { value = [object valueForKey:name]; } @catch (NSException *problem) {}
+            [found addObject:[NSString stringWithFormat:@"%@=%@", name, value ?: @"(nil)"]];
+        }
+        free(ivars);
+    }
+    return found.count ? [found componentsJoinedByString:@" "] : @"-";
+}
+
+// Each tab's name as the hide logic reads it, its stable identifiers, and
+// every bar subview, so the Meta AI tab and a relabeled Menu tab can both be
+// matched by something other than the displayed text.
 static void PSGDumpTabs(UIView *host) {
     if ([host respondsToSelector:@selector(items)]) {
         NSArray *items = ((id (*)(id, SEL))objc_msgSend)(host, @selector(items));
@@ -50,16 +72,18 @@ static void PSGDumpTabs(UIView *host) {
         for (id entry in items) {
             if (![entry isKindOfClass:[UITabBarItem class]]) continue;
             UITabBarItem *item = entry;
-            [PRMDebug log:@"tab item %lu: title=%@ a11y=%@ class=%@",
+            [PRMDebug log:@"tab item %lu: title=%@ a11y=%@ a11yId=%@ tag=%ld class=%@ ivars[%@]",
                       (unsigned long)index++, item.title ?: @"(nil)",
                       item.accessibilityLabel ?: @"(nil)",
-                      NSStringFromClass([item class])];
+                      item.accessibilityIdentifier ?: @"(nil)", (long)item.tag,
+                      NSStringFromClass([item class]), PSGIdentifierIvars(item)];
         }
     }
     for (UIView *child in host.subviews) {
-        [PRMDebug log:@"tab subview: a11y=%@ class=%@",
+        [PRMDebug log:@"tab subview: a11y=%@ a11yId=%@ tag=%ld class=%@ ivars[%@]",
                   child.accessibilityLabel ?: @"(nil)",
-                  NSStringFromClass([child class])];
+                  child.accessibilityIdentifier ?: @"(nil)", (long)child.tag,
+                  NSStringFromClass([child class]), PSGIdentifierIvars(child)];
     }
 }
 
