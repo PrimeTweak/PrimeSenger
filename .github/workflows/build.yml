@@ -137,6 +137,9 @@ jobs:
           /tmp/cyanenv/bin/python -m pip install --upgrade pip
           /tmp/cyanenv/bin/python -m pip install \
             https://github.com/asdfzxcvbn/pyzule-rw/archive/main.zip
+          # lief is used by packaging/inject-keychain.py; cyan does not pull it
+          # in on this runner, so install it explicitly.
+          /tmp/cyanenv/bin/python -m pip install lief
 
       # The input IPA keeps its own signature, so nothing is re-signed; only dylibs are added.
       - name: Inject
