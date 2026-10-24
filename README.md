@@ -4,7 +4,7 @@ A Messenger tweak for privacy, media and a cleaner interface.
 
 ## Requirements
 
-Messenger 579.0.0 on iOS 15.1 or later, sideloaded.
+Messenger 584.0.0 on iOS 15.1 or later, sideloaded.
 
 ## Features
 

@@ -30,8 +30,10 @@ static BOOL PSGSuppressAutoKeyboard(void) {
     // A fresh composer starts unfocused, whatever the previous thread left.
     PSGComposerFocused = NO;
     [PRMDebug noteHook:@"auto keyboard"];
-    // Runs in full so the first layout pass is not skipped; the raise itself
-    // is stopped in -_autoOpenKeyboardAfterOpenComposerView, which this calls.
+    if (PSGSuppressAutoKeyboard()) {
+        [PRMDebug noteAction:@"auto keyboard"];
+        return;
+    }
     %orig;
 }
 
