@@ -137,28 +137,15 @@ jobs:
           /tmp/cyanenv/bin/python -m pip install --upgrade pip
           /tmp/cyanenv/bin/python -m pip install \
             https://github.com/asdfzxcvbn/pyzule-rw/archive/main.zip
-          # lief is used by packaging/inject-keychain.py; cyan does not pull it
-          # in on this runner, so install it explicitly.
-          /tmp/cyanenv/bin/python -m pip install lief
 
       # The input IPA keeps its own signature, so nothing is re-signed; only dylibs are added.
       - name: Inject
         run: |
-          mkdir -p out
-          /tmp/cyanenv/bin/cyan -i App.ipa -o out/PrimeSenger.ipa -f dylib/PrimeSenger.dylib -x packaging/Messenger.entitlements -u -w -e
-
-      # cyan links added dylibs weakly and strips their signature; Messenger 584
-      # drops the keychain fix before its SecItem swizzle runs. Link it strongly
-      # and unmodified so it stays loaded.
-      - name: Inject keychain fix
-        run: |
-          rm -rf kc && mkdir kc
-          (cd kc && unzip -qq ../out/PrimeSenger.ipa)
-          app=$(find kc/Payload -maxdepth 1 -name '*.app' | head -1)
-          if [ -z "$app" ]; then echo "::error::No app bundle found."; exit 1; fi
-          /tmp/cyanenv/bin/python packaging/inject-keychain.py "$app" packaging/SideloadKeychainFix.dylib
-          rm -f out/PrimeSenger.ipa
-          (cd kc && zip -qry ../out/PrimeSenger.ipa Payload)
+          mkdir -p out keychain
+          # cyan links a dylib under its file name, and iOS requires that name to
+          # match the dylib's install name, so the keychain fix goes in under it.
+          cp packaging/SideloadKeychainFix.dylib keychain/sideloadKeychainfix.dylib
+          /tmp/cyanenv/bin/cyan -i App.ipa -o out/PrimeSenger.ipa -f keychain/sideloadKeychainfix.dylib dylib/PrimeSenger.dylib -x packaging/Messenger.entitlements -u -w -e
 
       # UIKit reads the key once at launch, so it is set in the bundle; the script edits
       # that one key and leaves the rest of Info.plist alone.
@@ -189,7 +176,7 @@ jobs:
 
       - name: Check IPA
         run: |
-          for lib in PrimeSenger.dylib SideloadKeychainFix.dylib; do
+          for lib in PrimeSenger.dylib sideloadKeychainfix.dylib; do
             if ! unzip -Z1 "$IPA" | grep -q "/$lib\$"; then
               echo "::error::$lib is missing from the IPA."
               exit 1
