@@ -436,8 +436,16 @@ static NSMutableArray<NSString *> *gScreenOrder = nil;
         [scope setImage:[UIImage systemImageNamed:@"stethoscope" withConfiguration:configuration]
                forState:UIControlStateNormal];
         scope.accessibilityLabel = @"Compatibility report";
-        [scope addTarget:self action:@selector(openCompatibilityReport)
-        forControlEvents:UIControlEventTouchUpInside];
+        // Single tap opens the report; a double tap takes a live capture, so
+        // the single tap waits for the double tap to fail before it fires.
+        UITapGestureRecognizer *tap =
+            [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(openCompatibilityReport)];
+        UITapGestureRecognizer *capture =
+            [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(captureLiveHierarchy)];
+        capture.numberOfTapsRequired = 2;
+        [tap requireGestureRecognizerToFail:capture];
+        [scope addGestureRecognizer:tap];
+        [scope addGestureRecognizer:capture];
         UILongPressGestureRecognizer *hold =
             [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleHold:)];
         hold.minimumPressDuration = 0.6;
@@ -468,6 +476,65 @@ static NSMutableArray<NSString *> *gScreenOrder = nil;
     BOOL next = ![PRMPrefs isEnabled:PRMKeyFlexEnabled];
     [PRMPrefs setEnabled:next forKey:PRMKeyFlexEnabled];
     [self applyFlexState];
+}
+
+// Class-name or label fragments that mark a view worth pinning: the AI summary
+// entry, and the message states a kept-on-delete capture would look at.
++ (NSArray<NSString *> *)flaggedFragments {
+    static NSArray *fragments = nil;
+    static dispatch_once_t token;
+    dispatch_once(&token, ^{
+        fragments = @[ @"summar", @"catchup", @"catch up", @"genai",
+                       @"metaai", @"meta ai", @"unsent", @"tombstone" ];
+    });
+    return fragments;
+}
+
++ (BOOL)view:(UIView *)view matchesFragment:(NSArray<NSString *> *)fragments {
+    NSString *name = NSStringFromClass([view class]);
+    NSString *label = view.accessibilityLabel ?: @"";
+    for (NSString *fragment in fragments) {
+        if ([name rangeOfString:fragment options:NSCaseInsensitiveSearch].location != NSNotFound) return YES;
+        if ([label rangeOfString:fragment options:NSCaseInsensitiveSearch].location != NSNotFound) return YES;
+    }
+    return NO;
+}
+
+// Walks the whole tree on a flat budget, logging only matched views, each with
+// its ancestor chain so the owning row or component can be named.
++ (void)scanFlaggedFrom:(UIView *)view chain:(NSString *)chain budget:(NSInteger *)budget {
+    if (view == nil || *budget <= 0) return;
+    (*budget)--;
+
+    NSString *here = [chain stringByAppendingFormat:@" > %@", NSStringFromClass([view class])];
+    if ([self view:view matchesFragment:[self flaggedFragments]]) {
+        CGRect f = view.frame;
+        NSString *label = view.accessibilityLabel.length
+            ? [NSString stringWithFormat:@"  a11y=\"%@\"", view.accessibilityLabel] : @"";
+        [self log:@"  FLAGGED %@ (%.0f,%.0f %.0fx%.0f)%@%@",
+                  NSStringFromClass([view class]), f.origin.x, f.origin.y,
+                  f.size.width, f.size.height, view.isHidden ? @" HIDDEN" : @"", label];
+        [self log:@"    in %@", here];
+    }
+    for (UIView *child in view.subviews) {
+        [self scanFlaggedFrom:child chain:here budget:budget];
+    }
+}
+
+// On-demand snapshot of the frontmost window, taken in whatever screen state
+// the scope was double tapped: flagged views first, then a bounded tree.
++ (void)captureLiveHierarchy {
+    if (![self recording]) return;
+    UIWindow *window = [self keyWindow];
+    if (window == nil) return;
+
+    [self log:@"=== live capture ==="];
+    NSInteger budget = 6000;
+    [self scanFlaggedFrom:window chain:@"window" budget:&budget];
+    [self log:@"--- tree ---"];
+    NSInteger counter = 0;
+    [self dumpView:window depth:1 counter:&counter];
+    [self log:@"=== %ld views captured ===", (long)counter];
 }
 #endif
 
