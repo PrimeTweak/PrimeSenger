@@ -142,7 +142,20 @@ jobs:
       - name: Inject
         run: |
           mkdir -p out
-          /tmp/cyanenv/bin/cyan -i App.ipa -o out/PrimeSenger.ipa -f packaging/SideloadKeychainFix.dylib dylib/PrimeSenger.dylib -x packaging/Messenger.entitlements -u -w -e
+          /tmp/cyanenv/bin/cyan -i App.ipa -o out/PrimeSenger.ipa -f dylib/PrimeSenger.dylib -x packaging/Messenger.entitlements -u -w -e
+
+      # cyan links added dylibs weakly and strips their signature; Messenger 584
+      # drops the keychain fix before its SecItem swizzle runs. Link it strongly
+      # and unmodified so it stays loaded.
+      - name: Inject keychain fix
+        run: |
+          rm -rf kc && mkdir kc
+          (cd kc && unzip -qq ../out/PrimeSenger.ipa)
+          app=$(find kc/Payload -maxdepth 1 -name '*.app' | head -1)
+          if [ -z "$app" ]; then echo "::error::No app bundle found."; exit 1; fi
+          /tmp/cyanenv/bin/python packaging/inject-keychain.py "$app" packaging/SideloadKeychainFix.dylib
+          rm -f out/PrimeSenger.ipa
+          (cd kc && zip -qry ../out/PrimeSenger.ipa Payload)
 
       # UIKit reads the key once at launch, so it is set in the bundle; the script edits
       # that one key and leaves the rest of Info.plist alone.
