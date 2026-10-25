@@ -10,27 +10,27 @@ Messenger 584.0.0 on iOS 15.1 or later, sideloaded.
 
 Settings open from the sparkles at the top of Messenger's settings, or from the
 floating button, which shows on its own when the Menu tab is hidden and anytime
-with the Floating button option. A switch named after a thing
-is on while that thing is visible; a switch named after an action does it.
+with the Floating button option. Each switch names a change to Messenger; on
+applies it.
 
-**Privacy** — read receipts (with a manual eye, or sent when you reply),
-typing indicator, story views, screenshot alerts.
+**Privacy** — read anonymously (always, with a manual eye, or until you reply),
+hide the typing indicator, watch stories anonymously, block screenshot alerts.
 
-**Chats** — quick reaction, keep the keyboard closed, confirm before calling,
-upload in HD, View once toggle, a mute bell that silences a chat on this
+**Chats** — hide the quick reaction, keep the keyboard closed, confirm before
+calling, upload in HD, block View once, a mute bell that silences a chat on this
 phone only.
 
-**Chat list** — stories tray, people you may know, friend suggestions.
+**Chat list** — hide the stories tray, People you may know and friend suggestions.
 
-**Stories** — reply bar, start stories with sound.
+**Stories** — hide the reply bar, start stories with sound.
 
 **Media** — unlock grayed-out media actions, a save button for story,
-disappearing and profile pictures, content warnings, replay View once
+disappearing and profile pictures, reveal covered photos, replay View once
 photos, loop videos, start videos with sound, speed up videos.
 
-**Meta AI** — in search, the chat list button, and the media menu.
+**Meta AI** — hide it in search, the chat list button and the media menu.
 
-**Tab bar** — Liquid Glass, and each of the five tabs.
+**Tab bar** — Liquid Glass, and hidden tabs: any of the five.
 
 **Tools** — Backup & reset (export and import your settings, clear the cache,
 reset to defaults), and FLEX explorer, which inspects what is on screen.

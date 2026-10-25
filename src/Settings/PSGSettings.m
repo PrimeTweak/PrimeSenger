@@ -3,6 +3,7 @@
 #import "PRMDebug.h"
 #import "PSGHelp.h"
 #import "PSGBackup.h"
+#import "PSGHiddenTabs.h"
 #import "PSGCompatibility.h"
 
 #ifndef PRIMESENGER_VERSION
@@ -268,7 +269,6 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 @property (nonatomic, copy) NSString *title;
 @property (nonatomic, copy) NSString *symbol;
 @property (nonatomic, copy) NSString *key;
-@property (nonatomic, assign) BOOL inverted;
 @property (nonatomic, assign) PSGRowKind kind;
 @property (nonatomic, assign) SEL action;
 @property (nonatomic, copy) NSString *auxKey;
@@ -280,15 +280,13 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 
 @implementation PSGSettingsRow
 
-// A noun title shows the thing, so its switch is on while the thing is
-// visible; for a key that stores "hide this", that is the stored value inverted.
-+ (instancetype)row:(NSString *)title symbol:(NSString *)symbol key:(NSString *)key
-           inverted:(BOOL)inverted {
+// A switch names a change to Messenger and is on while the change applies,
+// which is the stored value as it is.
++ (instancetype)row:(NSString *)title symbol:(NSString *)symbol key:(NSString *)key {
     PSGSettingsRow *row = [[PSGSettingsRow alloc] init];
     row.title = title;
     row.symbol = symbol;
     row.key = key;
-    row.inverted = inverted;
     row.kind = PSGRowKindSwitch;
     return row;
 }
@@ -316,12 +314,11 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 }
 
 - (BOOL)displayedState {
-    BOOL stored = [PRMPrefs isEnabled:self.key];
-    return self.inverted ? !stored : stored;
+    return [PRMPrefs isEnabled:self.key];
 }
 
 - (void)applyDisplayedState:(BOOL)on {
-    [PRMPrefs setEnabled:(self.inverted ? !on : on) forKey:self.key];
+    [PRMPrefs setEnabled:on forKey:self.key];
 }
 
 @end
@@ -378,101 +375,92 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
                                    action:@selector(openCompatibility)]];
 #endif
     [tools addObject:[PSGSettingsRow row:@"Floating button" symbol:@"sparkles"
-                                     key:PRMKeyFloatingButton inverted:NO]];
+                                     key:PRMKeyFloatingButton]];
     [tools addObject:[PSGSettingsRow row:@"FLEX explorer" symbol:@"scope"
-                                     key:PRMKeyFlexEnabled inverted:NO]];
+                                     key:PRMKeyFlexEnabled]];
 
     self.sections = @[
-        @[[[[PSGSettingsRow row:@"Read receipts" symbol:@"eye.fill" key:PRMKeyReadAnonymously
-                       inverted:YES]
-             pill:PRMKeyReadReceiptsManual on:@"Manual" off:@"Never"]
-             third:PRMKeyReadOnReply title:@"On reply"],
-          [PSGSettingsRow row:@"Typing indicator" symbol:@"ellipsis.bubble.fill"
-                          key:PRMKeyHideTypingIndicator inverted:YES],
-          [PSGSettingsRow row:@"Story views" symbol:@"eye.circle.fill"
-                          key:PRMKeyStoriesAnonymously inverted:YES],
-          [PSGSettingsRow row:@"Screenshot alerts" symbol:@"camera.fill"
-                          key:PRMKeyBlockScreenshotNotice inverted:YES]],
-        @[[PSGSettingsRow row:@"Quick reaction" symbol:@"face.smiling.fill"
-                          key:PRMKeyHideQuickReaction inverted:YES],
+        @[[[[PSGSettingsRow row:@"Read anonymously" symbol:@"eye.fill" key:PRMKeyReadAnonymously]
+             pill:PRMKeyReadReceiptsManual on:@"Manual" off:@"Always"]
+             third:PRMKeyReadOnReply title:@"Until reply"],
+          [PSGSettingsRow row:@"Hide typing indicator" symbol:@"ellipsis.bubble.fill"
+                          key:PRMKeyHideTypingIndicator],
+          [PSGSettingsRow row:@"Watch stories anonymously" symbol:@"eye.circle.fill"
+                          key:PRMKeyStoriesAnonymously],
+          [PSGSettingsRow row:@"Block screenshot alerts" symbol:@"camera.fill"
+                          key:PRMKeyBlockScreenshotNotice]],
+        @[[PSGSettingsRow row:@"Hide quick reaction" symbol:@"face.smiling.fill"
+                          key:PRMKeyHideQuickReaction],
           [PSGSettingsRow row:@"Keep keyboard closed" symbol:@"keyboard.chevron.compact.down"
-                          key:PRMKeyNoAutoKeyboard inverted:NO],
+                          key:PRMKeyNoAutoKeyboard],
           [PSGSettingsRow row:@"Confirm before calling" symbol:@"phone.fill"
-                          key:PRMKeyCallConfirmation inverted:NO],
+                          key:PRMKeyCallConfirmation],
           [PSGSettingsRow row:@"Upload in HD" symbol:@"arrow.up.circle.fill"
-                          key:PRMKeyUploadHD inverted:NO],
-          [PSGSettingsRow row:@"View once toggle" symbol:@"1.circle"
-                          key:PRMKeyBlockViewOnceSend inverted:YES],
+                          key:PRMKeyUploadHD],
+          [PSGSettingsRow row:@"Block View once" symbol:@"1.circle"
+                          key:PRMKeyBlockViewOnceSend],
           [PSGSettingsRow row:@"Mute bell" symbol:@"bell.slash.fill"
-                          key:PRMKeySilencedChats inverted:NO]],
-        @[[PSGSettingsRow row:@"Stories tray" symbol:@"person.3.fill"
-                          key:PRMKeyHideStoriesTray inverted:YES],
-          [PSGSettingsRow row:@"People you may know" symbol:@"person.2.fill"
-                          key:PRMKeyHidePeopleYouMayKnow inverted:YES],
-          [PSGSettingsRow row:@"Friend suggestions" symbol:@"person.badge.plus"
-                          key:PRMKeyHidePymkInNotifications inverted:YES]],
-        @[[PSGSettingsRow row:@"Reply bar" symbol:@"arrowshape.turn.up.left.fill"
-                          key:PRMKeyHideStoryReplyBar inverted:YES],
+                          key:PRMKeySilencedChats]],
+        @[[PSGSettingsRow row:@"Hide stories tray" symbol:@"person.3.fill"
+                          key:PRMKeyHideStoriesTray],
+          [PSGSettingsRow row:@"Hide People you may know" symbol:@"person.2.fill"
+                          key:PRMKeyHidePeopleYouMayKnow],
+          [PSGSettingsRow row:@"Hide friend suggestions" symbol:@"person.badge.plus"
+                          key:PRMKeyHidePymkInNotifications]],
+        @[[PSGSettingsRow row:@"Hide reply bar" symbol:@"arrowshape.turn.up.left.fill"
+                          key:PRMKeyHideStoryReplyBar],
           [PSGSettingsRow row:@"Start stories with sound" symbol:@"speaker.wave.2.fill"
-                          key:PRMKeyStorySound inverted:NO]],
+                          key:PRMKeyStorySound]],
         @[[PSGSettingsRow row:@"Unlock media actions" symbol:@"lock.open.fill"
-                          key:PRMKeyUnlockMedia inverted:NO],
+                          key:PRMKeyUnlockMedia],
           [PSGSettingsRow row:@"Save button" symbol:@"square.and.arrow.down.fill"
-                          key:PRMKeySaveButton inverted:NO],
-          [PSGSettingsRow row:@"Content warnings" symbol:@"exclamationmark.triangle.fill"
-                          key:PRMKeyRevealCensored inverted:YES],
+                          key:PRMKeySaveButton],
+          [PSGSettingsRow row:@"Reveal covered photos" symbol:@"exclamationmark.triangle.fill"
+                          key:PRMKeyRevealCensored],
           [PSGSettingsRow row:@"Replay view once" symbol:@"arrow.counterclockwise.circle.fill"
-                          key:PRMKeyViewOnce inverted:NO],
+                          key:PRMKeyViewOnce],
           [PSGSettingsRow row:@"Loop videos" symbol:@"repeat"
-                          key:PRMKeyLoopVideos inverted:NO],
+                          key:PRMKeyLoopVideos],
           [PSGSettingsRow row:@"Start videos with sound" symbol:@"speaker.wave.3.fill"
-                          key:PRMKeySoundOnOpen inverted:NO],
-          [[PSGSettingsRow row:@"Speed up videos" symbol:@"speedometer"
-                           key:PRMKeySpeed inverted:NO]
+                          key:PRMKeySoundOnOpen],
+          [[PSGSettingsRow row:@"Speed up videos" symbol:@"speedometer" key:PRMKeySpeed]
              pill:PRMKeySpeed2 on:@"2x" off:@"1.5x"]],
-        @[[PSGSettingsRow row:@"Meta AI in search" symbol:@"magnifyingglass"
-                          key:PRMKeyHideMetaAI inverted:YES],
-          [PSGSettingsRow row:@"Meta AI button" symbol:@"circle"
-                          key:PRMKeyHideMetaAIButton inverted:YES],
-          [PSGSettingsRow row:@"Meta AI in media menu" symbol:@"photo.fill"
-                          key:PRMKeyHideMetaAIMedia inverted:YES]],
+        @[[PSGSettingsRow row:@"Hide Meta AI in search" symbol:@"magnifyingglass"
+                          key:PRMKeyHideMetaAI],
+          [PSGSettingsRow row:@"Hide Meta AI button" symbol:@"circle"
+                          key:PRMKeyHideMetaAIButton],
+          [PSGSettingsRow row:@"Hide Meta AI in media menu" symbol:@"photo.fill"
+                          key:PRMKeyHideMetaAIMedia]],
         @[[PSGSettingsRow row:@"Liquid Glass" symbol:@"drop.fill"
-                          key:PRMKeyGlassTabBar inverted:NO],
-          [PSGSettingsRow row:@"Chats" symbol:@"bubble.left.fill"
-                          key:PRMKeyHideTabChats inverted:YES],
-          [PSGSettingsRow row:@"Meta AI" symbol:@"circle.circle.fill"
-                          key:PRMKeyHideTabMetaAI inverted:YES],
-          [PSGSettingsRow row:@"Stories" symbol:@"play.rectangle.fill"
-                          key:PRMKeyHideTabStories inverted:YES],
-          [PSGSettingsRow row:@"Notifications" symbol:@"bell.badge.fill"
-                          key:PRMKeyHideTabNotifications inverted:YES],
-          [PSGSettingsRow row:@"Menu" symbol:@"line.3.horizontal"
-                          key:PRMKeyHideTabMenu inverted:YES]],
+                          key:PRMKeyGlassTabBar],
+          [PSGSettingsRow link:@"Hidden tabs" symbol:@"eye.slash.fill"
+                       action:@selector(openHiddenTabs)]],
         tools,
     ];
 
     self.help = @[
-        @[@[@"Read receipts",
-            @"The mark that tells others you've read their messages. Manual: tap the eye in a chat to send one.",
+        @[@[@"Read anonymously",
+            @"Keeps your read receipts from being sent. Manual: tap the eye in a chat to send one. "
+             "Until reply: one is sent when you answer.",
             @"eye.fill"],
-          @[@"Typing indicator", @"The dots others see while you type.",
-            @"ellipsis.bubble.fill"],
-          @[@"Screenshot alerts",
-            @"The alert others may get when you take a screenshot.",
+          @[@"Watch stories anonymously", @"Stories you watch don't count you as a viewer.",
+            @"eye.circle.fill"],
+          @[@"Block screenshot alerts",
+            @"Others aren't told when you screenshot a disappearing photo.",
             @"camera.fill"]],
-        @[@[@"Quick reaction",
-            @"The one-tap emoji next to the message field.",
+        @[@[@"Hide quick reaction",
+            @"Replaces the one-tap emoji next to the message field with a send button.",
             @"face.smiling.fill"],
           @[@"Upload in HD",
             @"Sends photos in full quality from Messenger's own picker.",
             @"arrow.up.circle.fill"],
-          @[@"View once toggle",
-            @"The option to send a photo that opens only once.",
+          @[@"Block View once",
+            @"Removes the option to send a photo that opens only once.",
             @"1.circle"],
           @[@"Mute bell",
             @"A bell in each chat that mutes it for this phone only.",
             @"bell.slash.fill"]],
-        @[@[@"Friend suggestions", @"The suggested people in the Notifications tab.",
+        @[@[@"Hide friend suggestions", @"Removes the suggested people from the Notifications tab.",
             @"person.badge.plus"]],
         @[],
         @[@[@"Unlock media actions",
@@ -481,16 +469,14 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
           @[@"Save button",
             @"A save button for stories, disappearing photos and profile pictures.",
             @"square.and.arrow.down.fill"],
-          @[@"Content warnings", @"The warning Messenger shows over sensitive photos.",
+          @[@"Reveal covered photos", @"Skips the warning Messenger shows over sensitive photos.",
             @"exclamationmark.triangle.fill"],
           @[@"Replay view once",
             @"Lets you open View once photos again.",
             @"arrow.counterclockwise.circle.fill"]],
         @[],
         @[@[@"Liquid Glass", @"Uses the iOS glass tab bar instead of Messenger's own.",
-            @"drop.fill"],
-          @[@"Tabs", @"Hiding or showing a tab takes effect after a restart.",
-            @"line.3.horizontal"]],
+            @"drop.fill"]],
         @[@[@"Floating button",
             @"A button over Messenger that opens these settings. "
              "It shows by itself when the Menu tab is hidden.",
@@ -509,6 +495,11 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 - (void)openBackup {
     [self.navigationController pushViewController:
         [[PSGBackupViewController alloc] initWithStyle:UITableViewStyleInsetGrouped] animated:YES];
+}
+
+- (void)openHiddenTabs {
+    [self.navigationController pushViewController:
+        [[PSGHiddenTabsViewController alloc] initWithStyle:UITableViewStyleInsetGrouped] animated:YES];
 }
 
 #if PRIMESENGER_DEBUG
@@ -556,8 +547,7 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
 - (void)showHowItWorks {
     [PSGHelpSheet presentFrom:self title:@"How it works" items:@[
         @[@"Switches",
-          @"On means you have what the switch names; off means you don't. "
-          @"With Typing indicator off, others don't see you typing.",
+          @"Each switch names a change to Messenger. On applies it, off leaves Messenger untouched.",
           @"switch.2"],
         @[@"Info buttons", @"The info button next to a section title explains each switch in that section.",
           @"info.circle"],
@@ -579,6 +569,10 @@ typedef NS_ENUM(NSInteger, PSGRowKind) {
     if (row.kind == PSGRowKindLink) {
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
         cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+        if (row.action == @selector(openHiddenTabs)) {
+            cell.value.text = PSGHiddenTabsSummary();
+            cell.value.hidden = NO;
+        }
         return cell;
     }
 
@@ -646,11 +640,6 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
     PSGSettingsRow *row = [self rowForTag:toggle.tag];
     if (row == nil) return;
     [row applyDisplayedState:toggle.isOn];
-    if ([row.key isEqualToString:PRMKeyHideTabMenu] && [PRMPrefs isEnabled:PRMKeyHideTabMenu]) {
-        [self noteMenuTabHidden];
-    } else {
-        [self noteRestartIfTabRow:row];
-    }
     [PRMDebug refreshFloatingButton];
     [PRMDebug returnButtonToSlot];
     if (row.auxKey != nil) [self.tableView reloadData];
@@ -658,33 +647,6 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
         [PRMDebug applyFlexState];
         if (toggle.isOn) [self close];
     }
-}
-
-// Settings live under the Menu tab, so hiding it says where they went. Shown
-// every time, since it is the only way back into PrimeSenger.
-- (void)noteMenuTabHidden {
-    UIAlertController *alert = [UIAlertController
-        alertControllerWithTitle:@"Menu tab hidden"
-                         message:@"PrimeSenger settings now open from the floating button. "
-                                  "The tab disappears once Messenger restarts."
-                  preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
-}
-
-// Tab changes settle only after a relaunch, which is said once per launch.
-- (void)noteRestartIfTabRow:(PSGSettingsRow *)row {
-    static BOOL told = NO;
-    NSArray *tabKeys = @[PRMKeyHideTabChats, PRMKeyHideTabMetaAI, PRMKeyHideTabStories,
-                         PRMKeyHideTabNotifications, PRMKeyHideTabMenu];
-    if (![tabKeys containsObject:row.key] || told) return;
-    told = YES;
-    UIAlertController *alert = [UIAlertController
-        alertControllerWithTitle:@"Restart Messenger"
-                         message:@"Tab changes settle once the app is closed and opened again."
-                  preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
 }
 
 @end

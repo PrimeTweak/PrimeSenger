@@ -1,6 +1,6 @@
-// The settings screen, drawn to the metrics of Messenger's own. A noun title
-// shows the thing, so its switch is on while the thing is visible; a verb
-// title makes something happen. Stored keys never change meaning.
+// The settings screen, drawn to the metrics of Messenger's own. Each switch
+// names a change to Messenger and is on while that change applies, which is
+// also what its stored key holds.
 
 #import <UIKit/UIKit.h>
 
