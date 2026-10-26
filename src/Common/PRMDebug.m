@@ -9,7 +9,6 @@ static NSMutableArray<NSString *> *gLog = nil;
 static NSMutableDictionary<NSString *, NSNumber *> *gHookCounts = nil;
 static NSMutableDictionary<NSString *, NSNumber *> *gActionCounts = nil;
 static NSMutableDictionary<NSString *, NSString *> *gStatus = nil;
-static BOOL gButtonMoved = NO;
 
 // The floating button's diameter, and the glyph's point size as a fraction
 // of it. Everything else is derived, so changing the diameter keeps the
@@ -23,9 +22,15 @@ static const CGFloat kFloatingEdgeInset = 16.0;
 static const CGFloat kHostSlotLift = 65.0;
 static const CGFloat kStackedExtra = 68.0;
 
+// A dragged stack stays put this long after the drag ends, then glides back.
+static const NSTimeInterval kReturnDelay = 4.0;
+// The closest a dragged button comes to the edge of the screen.
+static const CGFloat kDragEdgeInset = 4.0;
 
-// Frame set by dragging. Reapplied when the button is rebuilt.
-static CGRect gButtonFrame = {{0.0, 0.0}, {0.0, 0.0}};
+// How far the buttons were dragged from their slots, zero at rest. They move
+// as one stack, so the report button stays above the settings button.
+static CGPoint gStackOffset = {0.0, 0.0};
+static NSUInteger gReturnGeneration = 0;
 
 // Raised while the keyboard is showing; the floating buttons stay hidden
 // meanwhile.
@@ -39,33 +44,28 @@ static UIButton *gScope = nil;
 
 @implementation PRMDebug
 
-// A dragged button holds its place until the screen changes, then glides
-// back to its slot. Nothing is stored: the move is meant to be temporary.
+// Glides the stack back to its slots. Nothing is stored: a move is meant to
+// be temporary, so a relaunch also starts from the slots.
 + (void)returnButtonToSlot {
-    if (!gButtonMoved) return;
-    gButtonMoved = NO;
-    gButtonFrame = CGRectZero;
+    if (CGPointEqualToPoint(gStackOffset, CGPointZero)) return;
+    gStackOffset = CGPointZero;
+    gReturnGeneration++;
 
-    UIButton *button = gButton;
-    UIWindow *window = button.window;
+    UIWindow *window = gButton.window;
+#if PRIMESENGER_DEBUG
+    if (window == nil) window = gScope.window;
+#endif
     if (window == nil) return;
-
-    CGRect slot = [self slotInWindow:window];
-    if (CGRectEqualToRect(slot, button.frame)) return;
 
     [UIView animateWithDuration:0.28
                           delay:0.0
          usingSpringWithDamping:0.82
           initialSpringVelocity:0.0
                         options:UIViewAnimationOptionBeginFromCurrentState
-                     animations:^{ button.frame = slot; }
-                     completion:^(BOOL finished) {
-#if PRIMESENGER_DEBUG
-        [self positionScope];
-#endif
-    }];
+                     animations:^{ [self layoutStackInWindow:window]; }
+                     completion:nil];
     [self setStatus:[NSString stringWithFormat:@"returned to slot, y=%.0f",
-                     CGRectGetMinY(slot)]
+                     CGRectGetMinY([self slotInWindow:window])]
              forKey:@"floating button"];
 }
 
@@ -273,7 +273,7 @@ static NSMutableArray<NSString *> *gScreenOrder = nil;
         return;
     }
     if (gButton.superview == window) {
-        if (!gButtonMoved) [self positionButton:gButton inWindow:window];
+        [self positionButton:gButton inWindow:window];
         [window bringSubviewToFront:gButton];
         return;
     }
@@ -328,48 +328,82 @@ static NSMutableArray<NSString *> *gScreenOrder = nil;
                       kFloatingSize, kFloatingSize);
 }
 
-+ (void)positionButton:(UIView *)button inWindow:(UIWindow *)window {
-    // A dragged button keeps its place until +returnButtonToSlot glides it
-    // back. Nothing is stored, so a relaunch starts from the slot.
-    if (gButtonMoved && !CGRectIsEmpty(gButtonFrame)) {
-        button.frame = gButtonFrame;
-        button.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
-                                  UIViewAutoresizingFlexibleTopMargin;
-        [self setStatus:[NSString stringWithFormat:@"moved by hand, y=%.0f",
-                         CGRectGetMinY(gButtonFrame)]
-                 forKey:@"floating button"];
-        if (button.alpha < 1.0 && !gKeyboardUp) {
-            [UIView animateWithDuration:0.18 animations:^{ button.alpha = 1.0; }];
-        }
-        return;
-    }
-
+// The report button's slot: above the settings button while it shows, in the
+// settings button's slot otherwise.
++ (CGRect)scopeSlotInWindow:(UIWindow *)window {
     CGRect slot = [self slotInWindow:window];
-    if (!CGRectEqualToRect(slot, button.frame)) button.frame = slot;
+    if (gButton.superview != window) return slot;
+    return CGRectOffset(slot, 0.0, -kStackedExtra);
+}
+
+// Both buttons at their slots, shifted together by the current drag.
++ (void)layoutStackInWindow:(UIWindow *)window {
+    if (gButton.superview == window) {
+        gButton.frame = CGRectOffset([self slotInWindow:window], gStackOffset.x, gStackOffset.y);
+    }
+#if PRIMESENGER_DEBUG
+    if (gScope.superview == window) {
+        gScope.frame = CGRectOffset([self scopeSlotInWindow:window], gStackOffset.x, gStackOffset.y);
+    }
+#endif
+}
+
++ (void)positionButton:(UIView *)button inWindow:(UIWindow *)window {
+    [self layoutStackInWindow:window];
     button.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
                               UIViewAutoresizingFlexibleTopMargin;
 
     if (button.alpha < 1.0 && !gKeyboardUp) {
         [UIView animateWithDuration:0.18 animations:^{ button.alpha = 1.0; }];
     }
+    if (!CGPointEqualToPoint(gStackOffset, CGPointZero)) return;
     [self setStatus:[NSString stringWithFormat:@"%@ slot, y=%.0f",
                      [PRMPrefs isEnabled:PRMKeyHideMetaAIButton] ? @"host" : @"stacked",
-                     CGRectGetMinY(slot)]
+                     CGRectGetMinY([self slotInWindow:window])]
              forKey:@"floating button"];
 }
 
-+ (void)handlePan:(UIPanGestureRecognizer *)pan {
-    UIView *view = pan.view;
-    if (view == nil || view.superview == nil) return;
-    // A dragged button is not repositioned until the next foreground.
-    gButtonMoved = YES;
-    CGPoint delta = [pan translationInView:view.superview];
-    view.center = CGPointMake(view.center.x + delta.x, view.center.y + delta.y);
-    [pan setTranslation:CGPointZero inView:view.superview];
-    gButtonFrame = view.frame;
+// The offset that keeps every button on screen, a few points from the edge.
++ (CGPoint)clampedOffset:(CGPoint)offset inWindow:(UIWindow *)window {
+    CGRect rest = CGRectNull;
+    if (gButton.superview == window) rest = CGRectUnion(rest, [self slotInWindow:window]);
 #if PRIMESENGER_DEBUG
-    [self positionScope];
+    if (gScope.superview == window) rest = CGRectUnion(rest, [self scopeSlotInWindow:window]);
 #endif
+    if (CGRectIsNull(rest)) return CGPointZero;
+
+    CGRect area = CGRectInset(window.bounds, kDragEdgeInset, kDragEdgeInset);
+    offset.x = MAX(CGRectGetMinX(area) - CGRectGetMinX(rest),
+                   MIN(CGRectGetMaxX(area) - CGRectGetMaxX(rest), offset.x));
+    offset.y = MAX(CGRectGetMinY(area) - CGRectGetMinY(rest),
+                   MIN(CGRectGetMaxY(area) - CGRectGetMaxY(rest), offset.y));
+    return offset;
+}
+
+// Either button drags the whole stack, which glides back to its slots a few
+// seconds after the last drag ends. A new drag restarts the wait.
++ (void)handlePan:(UIPanGestureRecognizer *)pan {
+    UIWindow *window = pan.view.window;
+    if (window == nil) return;
+    if (pan.state == UIGestureRecognizerStateBegan) gReturnGeneration++;
+
+    CGPoint delta = [pan translationInView:window];
+    [pan setTranslation:CGPointZero inView:window];
+    gStackOffset = [self clampedOffset:CGPointMake(gStackOffset.x + delta.x, gStackOffset.y + delta.y)
+                              inWindow:window];
+    [self layoutStackInWindow:window];
+
+    UIGestureRecognizerState state = pan.state;
+    if (state != UIGestureRecognizerStateEnded && state != UIGestureRecognizerStateCancelled) return;
+    if (CGPointEqualToPoint(gStackOffset, CGPointZero)) return;
+
+    [self setStatus:[NSString stringWithFormat:@"moved by hand, back in %.0f s", kReturnDelay]
+             forKey:@"floating button"];
+    NSUInteger mine = ++gReturnGeneration;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kReturnDelay * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (mine == gReturnGeneration) [self returnButtonToSlot];
+    });
 }
 
 
@@ -442,6 +476,8 @@ static NSMutableArray<NSString *> *gScreenOrder = nil;
             [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleHold:)];
         hold.minimumPressDuration = 0.6;
         [scope addGestureRecognizer:hold];
+        [scope addGestureRecognizer:
+            [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)]];
         [window addSubview:scope];
         gScope = scope;
     }
@@ -454,11 +490,7 @@ static NSMutableArray<NSString *> *gScreenOrder = nil;
     UIButton *scope = gScope;
     UIWindow *window = scope.window;
     if (window == nil) return;
-    BOOL stacked = gButton.superview == window;
-    CGRect anchor = stacked ? gButton.frame : [self slotInWindow:window];
-    CGFloat lift = stacked ? kStackedExtra : 0.0;
-    scope.frame = CGRectMake(CGRectGetMinX(anchor), CGRectGetMinY(anchor) - lift,
-                             kFloatingSize, kFloatingSize);
+    [self layoutStackInWindow:window];
     scope.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleTopMargin;
     scope.alpha = gKeyboardUp ? 0.0 : 1.0;
 }

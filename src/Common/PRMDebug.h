@@ -34,7 +34,8 @@
 // Hides the floating buttons while the keyboard is up.
 + (void)keyboardFrameChanged:(NSNotification *)note;
 
-// Glides the floating button back to its slot after a manual move.
+// Glides the floating buttons back to their slots; a drag also does it by
+// itself a few seconds after it ends.
 + (void)returnButtonToSlot;
 
 // Places or removes the floating button according to the current switches.

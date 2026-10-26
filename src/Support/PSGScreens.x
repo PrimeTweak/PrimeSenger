@@ -28,11 +28,6 @@
 - (void)viewWillAppear:(BOOL)animated {
     %orig;
     NSString *name = NSStringFromClass([self class]);
-
-    // Every screen change can move the host's floating button, so the tweak's
-    // button is placed again for every controller.
-    [PRMDebug returnButtonToSlot];
-
     if ([PRMSuppress keyForControllerName:name] == nil) return;
 
     NSString *counter = [@"suppressed " stringByAppendingString:[PRMSuppress keyForControllerName:name]];
