@@ -53,18 +53,14 @@ static NSString *PSGFlashCaller(void) {
     return kept.count ? [kept componentsJoinedByString:@" < "] : @"-";
 }
 
-static NSString *PSGFlashCounts(UICollectionView *list) {
-    NSInteger sections = list.numberOfSections, items = 0;
-    for (NSInteger s = 0; s < sections; s++) items += [list numberOfItemsInSection:s];
-    return [NSString stringWithFormat:@"%ld items/%ld sec", (long)items, (long)sections];
-}
-
+// Reads stored geometry only: asking the list for its counts can make it run
+// a pending reload, which re-enters the hooks below.
 static void PSGFlashSnap(NSString *tag) {
     UICollectionView *list = gList;
     if (list == nil) { PSGFlashLog(@"%@: no list", tag); return; }
-    PSGFlashLog(@"%@: offset.y=%.1f inset.bottom=%.1f contentH=%.1f boundsH=%.1f %@",
+    PSGFlashLog(@"%@: offset.y=%.1f inset.bottom=%.1f contentH=%.1f boundsH=%.1f",
                 tag, list.contentOffset.y, list.adjustedContentInset.bottom,
-                list.contentSize.height, list.bounds.size.height, PSGFlashCounts(list));
+                list.contentSize.height, list.bounds.size.height);
 }
 
 #pragma mark - Watcher
@@ -185,14 +181,14 @@ static void PSGFlashArmKeyboardLog(void) {
 
 - (void)reloadData {
     if ((UICollectionView *)self == gList) {
-        PSGFlashLog(@"reloadData (%@ before)  via %@", PSGFlashCounts((UICollectionView *)self), PSGFlashCaller());
+        PSGFlashLog(@"reloadData  via %@", PSGFlashCaller());
     }
     %orig;
 }
 
 - (void)performBatchUpdates:(void (^)(void))updates completion:(void (^)(BOOL))completion {
     if ((UICollectionView *)self == gList) {
-        PSGFlashLog(@"batchUpdates (%@ before)  via %@", PSGFlashCounts((UICollectionView *)self), PSGFlashCaller());
+        PSGFlashLog(@"batchUpdates  via %@", PSGFlashCaller());
     }
     %orig;
 }
